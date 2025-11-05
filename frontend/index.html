@@ -112,43 +112,55 @@
                     <fieldset class="border border-gray-700 p-4 rounded-md">
                         <legend class="text-lg font-medium text-white px-2">Packet Manipulation</legend>
                         
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4 mt-2">
-
-                            <div>
-                                <label for="loss" class="block text-sm font-medium text-gray-300">Packet Loss (random)</label>
-                                <div class="flex space-x-2 mt-1">
-                                    <input type="number" name="loss" id="loss" min="0" max="100" step="0.01" placeholder="Loss (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                    <input type="number" name="lossCorrelation" id="lossCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label for="corrupt" class="block text-sm font-medium text-gray-300">Packet Corruption</label>
-                                <div class="flex space-x-2 mt-1">
-                                    <input type="number" name="corrupt" id="corrupt" min="0" max="100" step="0.01" placeholder="Corrupt (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                    <input type="number" name="corruptCorrelation" id="corruptCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                </div>
-                            </div>
-
-                            <div>
-                                <label for="duplicate" class="block text-sm font-medium text-gray-300">Packet Duplication</label>
-                                <div class="flex space-x-2 mt-1">
-                                    <input type="number" name="duplicate" id="duplicate" min="0" max="100" step="0.01" placeholder="Duplicate (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                    <input type="number" name="duplicateCorrelation" id="duplicateCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                </div>
-                            </div>
-
-                            <div>
-                                <label for="reorder" class="block text-sm font-medium text-gray-300">Packet Reordering (requires Delay)</label>
-                                <div class="flex space-x-2 mt-1">
-                                    <input type="number" name="reorder" id="reorder" min="0" max="100" step="0.01" placeholder="Reorder (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                    <input type="number" name="reorderCorrelation" id="reorderCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                </div>
-                            </div>
-
+                        <div class="mb-4">
+                            <label for="lossModel" class="block text-sm font-medium text-gray-300">Loss Model</label>
+                            <select id="lossModel" name="lossModel" class="form-select mt-1 block w-full md:w-1/3 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                <option value="random" selected>Random</option>
+                                <option value="state">State (4-state Markov)</option>
+                                <option value="gemodel">Gemodel (Gilbert-Elliot)</option>
+                            </select>
                         </div>
-                    </fieldset>
+
+                        <div id="loss-model-forms">
+                            
+                            <div id="loss-random-form" class="hidden space-y-4">
+                                <label class="block text-sm font-medium text-gray-400">Loss Model: <span class="font-bold">Random</span></label>
+                                <p class="text-xs text-yellow-400">
+                                    Each packet has an independent chance of being lost (<b>random PERCENT</b>). If in doubt, fill in only 'Loss (%)'. 'Correlation' is optional.
+                                </p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    </div>
+                            </div>
+
+                            <div id="loss-state-form" class="hidden space-y-4">
+                                <label class="block text-sm font-medium text-gray-400">Loss Model: <span class="font-bold">State (4-state Markov)</span></label>
+                                <p class="text-xs text-yellow-400">
+                                    Uses a 4-state Markov chain (<b>state P13 [ P31 ... ]</b>). <strong>If in doubt, fill in only 'P13' (%)</strong> for simple (Bernoulli) losses. The other fields are optional and positional.
+                                </p>
+                                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                    </div>
+                            </div>
+
+                            <div id="loss-gemodel-form" class="hidden space-y-4">
+                                <label class="block text-sm font-medium text-gray-400">Loss Model: <span class="font-bold">Gemodel (Gilbert-Elliot)</span></label>
+                                <p class="text-xs text-yellow-400">
+                                    Burst loss model (<b>gemodel PERCENT [ R ... ]</b>). <strong>If in doubt, fill in only 'p' (%)</strong> (probability of starting a loss burst). The other fields are optional and positional.
+                                </p>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    </div>
+                            </div>
+                        </div> </fieldset>
                     
+                    <div class="mt-6 flex justify-between pt-4 border-t border-gray-700">
+                        <button type="submit" id="apply-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
+                            Apply Rules
+                        </button>
+                        <button type="button" id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
+                            Reset All Rules
+                        </button>
+                    </div>
+                </form>
+            </section>                    
                     <!-- Form Actions -->
                     <div class="mt-6 flex justify-between pt-4 border-t border-gray-700">
                         <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">

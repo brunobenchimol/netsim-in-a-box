@@ -132,13 +132,31 @@ type V4NetworkOptions struct {
 	Direction string
 	ApiPort   string
 	// V4 Parameters
-	Rate                 string // kbit
-	Delay                string // ms
-	Jitter               string // ms
-	DelayCorrelation     string // %
-	Distribution         string // normal, pareto, etc.
-	Loss                 string // %
-	LossCorrelation      string // %
+	Rate             string // kbit
+	Delay            string // ms
+	Jitter           string // ms
+	DelayCorrelation string // %
+	Distribution     string // normal, pareto, etc.
+
+	LossModel string // "none", "random", "state", "gemodel"
+
+	// Loss Random
+	Loss            string // %
+	LossCorrelation string // %
+
+	// Loss State (4-state Markov chain)
+	LossStateP13 string // %
+	LossStateP31 string // %
+	LossStateP32 string // %
+	LossStateP23 string // %
+	LossStateP14 string // %
+
+	// Loss Gemodel (Gilbert-Elliot (burst loss))
+	LossGemodelP  string // %
+	LossGemodelR  string // %
+	LossGemodel1h string // %
+	LossGemodel1k string // %
+
 	Corrupt              string // %
 	CorruptCorrelation   string // %
 	Duplicate            string // %
@@ -159,8 +177,18 @@ func handleTcSetupV4(w http.ResponseWriter, r *http.Request) {
 		Jitter:               q.Get("jitter"),
 		DelayCorrelation:     q.Get("delayCorrelation"),
 		Distribution:         q.Get("distribution"),
+		LossModel:            q.Get("lossModel"),
 		Loss:                 q.Get("loss"),
 		LossCorrelation:      q.Get("lossCorrelation"),
+		LossStateP13:         q.Get("lossStateP13"),
+		LossStateP31:         q.Get("lossStateP31"),
+		LossStateP32:         q.Get("lossStateP32"),
+		LossStateP23:         q.Get("lossStateP23"),
+		LossStateP14:         q.Get("lossStateP14"),
+		LossGemodelP:         q.Get("lossGemodelP"),
+		LossGemodelR:         q.Get("lossGemodelR"),
+		LossGemodel1h:        q.Get("lossGemodel1h"),
+		LossGemodel1k:        q.Get("lossGemodel1k"),
 		Corrupt:              q.Get("corrupt"),
 		CorruptCorrelation:   q.Get("corruptCorrelation"),
 		Duplicate:            q.Get("duplicate"),
@@ -286,11 +314,49 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 	}
 
 	// Loss, Loss Correlation
-	if v.Loss != "" {
-		hasNetemRules = true
-		netemArgs = append(netemArgs, "loss", "random", fmt.Sprintf("%v%%", v.Loss))
-		if v.LossCorrelation != "" {
-			netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossCorrelation))
+	switch v.LossModel {
+	case "random":
+		if v.Loss != "" {
+			hasNetemRules = true
+			netemArgs = append(netemArgs, "loss", "random", fmt.Sprintf("%v%%", v.Loss))
+			if v.LossCorrelation != "" {
+				netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossCorrelation))
+			}
+		}
+
+	case "state":
+		if v.LossStateP13 != "" {
+			hasNetemRules = true
+			// 'state' command needs exact position
+			netemArgs = append(netemArgs, "loss", "state", fmt.Sprintf("%v%%", v.LossStateP13))
+			if v.LossStateP31 != "" {
+				netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossStateP31))
+				if v.LossStateP32 != "" {
+					netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossStateP32))
+					if v.LossStateP23 != "" {
+						netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossStateP23))
+						if v.LossStateP14 != "" {
+							netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossStateP14))
+						}
+					}
+				}
+			}
+		}
+
+	case "gemodel":
+		if v.LossGemodelP != "" {
+			hasNetemRules = true
+			// 'gemodel' command needs exact position
+			netemArgs = append(netemArgs, "loss", "gemodel", fmt.Sprintf("%v%%", v.LossGemodelP))
+			if v.LossGemodelR != "" {
+				netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossGemodelR))
+				if v.LossGemodel1h != "" {
+					netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossGemodel1h))
+					if v.LossGemodel1k != "" {
+						netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossGemodel1k))
+					}
+				}
+			}
 		}
 	}
 

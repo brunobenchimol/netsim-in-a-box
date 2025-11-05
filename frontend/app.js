@@ -29,6 +29,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const duplicateCorrelationInput = document.getElementById('duplicateCorrelation');
     const reorderCorrelationInput = document.getElementById('reorderCorrelation');
 
+    const lossModelSelect = document.getElementById('lossModel');
+    const lossModelForms = {
+        'none': null,
+        'random': document.getElementById('loss-random-form'),
+        'state': document.getElementById('loss-state-form'),
+        'gemodel': document.getElementById('loss-gemodel-form')
+    };
+
+    const applyButton = document.getElementById('apply-button');
+    // Inputs that must be filled to enable 'Apply' button
+    const valueInputs = [
+        document.getElementById('rate-value'),
+        document.getElementById('delay'),
+        // 'random'
+        document.getElementById('loss'),
+        // 'state'
+        document.getElementById('lossStateP13'),
+        // 'gemodel'
+        document.getElementById('lossGemodelP'),
+        // 'others'
+        document.getElementById('corrupt'),
+        document.getElementById('duplicate'),
+        document.getElementById('reorder'),
+    ];
+
     let selectedInterface = null; // Stores the selected interface
 
     /**
@@ -71,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function updateInputDependencies() {
         const delayVal = delayInput.value;
-        const jitterVal = jitterInput.value;
 
         // Check if delay is set
         const hasDelay = (delayVal !== "" && delayVal !== "0");
@@ -106,6 +130,38 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDependency(corruptInput, corruptCorrelationInput);
         updateDependency(duplicateInput, duplicateCorrelationInput);
         updateDependency(reorderInput, reorderCorrelationInput); // Reorder child
+        updateApplyButtonState();
+    }
+
+    /**
+     * Shows the correct form section for the selected loss model
+     */
+    function updateLossModelUI() {
+        const selectedModel = lossModelSelect.value;
+        
+        // Hide all model forms
+        Object.values(lossModelForms).forEach(form => {
+            if (form) form.classList.add('hidden');
+        });
+
+        // Show the selected one
+        if (lossModelForms[selectedModel]) {
+            lossModelForms[selectedModel].classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Checks if any simulation parameter is set and enables/disables the Apply button.
+     */
+    function updateApplyButtonState() {
+        let hasValue = false;
+        for (const input of valueInputs) {
+            if (input.value !== "" && parseFloat(input.value) > 0) {
+                hasValue = true;
+                break;
+            }
+        }
+        applyButton.disabled = !hasValue;
     }
 
     /**
@@ -241,8 +297,17 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 2. Add all other fields *only if they have a value*
         const fields = [
+            // Latency
             'delay', 'jitter', 'delayCorrelation', 'distribution',
-            'loss', 'lossCorrelation', 
+            // Loss Model (selector)
+            'lossModel',
+            // Loss Random
+            'loss', 'lossCorrelation',
+            // Loss State
+            'lossStateP13', 'lossStateP31', 'lossStateP32', 'lossStateP23', 'lossStateP14',
+            // Loss Gemodel
+            'lossGemodelP', 'lossGemodelR', 'lossGemodel1h', 'lossGemodel1k',
+            // Other Manipulations
             'corrupt', 'corruptCorrelation',
             'duplicate', 'duplicateCorrelation',
             'reorder', 'reorderCorrelation'
@@ -294,6 +359,9 @@ document.addEventListener('DOMContentLoaded', () => {
             );
             configForm.reset();
             ifbWarning.style.display = 'none';
+            updateInputDependencies(); 
+            updateLossModelUI();       
+            updateApplyButtonState();  
         } catch (err) {
             logMessage(`Failed to reset rules.`, 'error');
         }
@@ -305,9 +373,15 @@ document.addEventListener('DOMContentLoaded', () => {
     corruptInput.addEventListener('input', updateInputDependencies);
     duplicateInput.addEventListener('input', updateInputDependencies);
     reorderInput.addEventListener('input', updateInputDependencies);
+    lossModelSelect.addEventListener('input', updateLossModelUI);
+
+    valueInputs.forEach(input => {
+        input.addEventListener('input', updateApplyButtonState);
+    });
 
     // Initialize the application
     fetchInterfaces();
     updateInputDependencies(); // Call on load to set initial state
-    
+    updateLossModelUI();    
+    updateApplyButtonState();
 });
