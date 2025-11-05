@@ -1,9 +1,6 @@
 // Wait for the DOM to be ready
 document.addEventListener('DOMContentLoaded', () => {
     
-    // API Version
-    const API_VERSION = 'v2';
-    
     // DOM References
     const loadingEl = document.getElementById('loading-interfaces');
     const interfacesListEl = document.getElementById('interfaces-list');
@@ -11,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedIfaceNameEl = document.getElementById('selected-iface-name');
     const logOutputEl = document.getElementById('log-output');
 
+    // New form references
     const configForm = document.getElementById('config-form');
     const resetButton = document.getElementById('reset-button');
     const directionSelect = document.getElementById('direction');
@@ -52,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const responseText = await response.text(); // Read text first
 
             if (!response.ok) {
-                // Try to parse error from V2 JSON, fallback to text
+                // Try to parse error from JSON, fallback to text
                 try {
                     const errJson = JSON.parse(responseText);
                     throw new Error(`API Error: ${errJson.message || 'Unknown error'}`);
@@ -74,11 +72,10 @@ document.addEventListener('DOMContentLoaded', () => {
      * Fetches network interfaces from the API
      */
     async function fetchInterfaces() {
-        logMessage(`Fetching network interfaces from API (/${API_VERSION}/init)...`);
+        logMessage('Fetching network interfaces from API...');
         try {
-            // --- CORRECTION HERE ---
-            // Now correctly uses the API_VERSION variable
-            const response = await fetch(`/tc/api/${API_VERSION}/init`);
+            // The API is served on the same port (e.g., http://localhost:2023)
+            const response = await fetch('/tc/api/v1/init');
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -150,8 +147,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-      * Shows or hides the IFB warning based on direction
-      */
+     * Shows or hides the IFB warning based on direction
+     */
     directionSelect.addEventListener('change', (e) => {
         if (e.target.value === 'incoming') {
             ifbWarning.style.display = 'block';
@@ -162,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     /**
-     * Handles the form submission to apply V2 TC rules
+     * Handles the form submission to apply TC rules
      */
     configForm.addEventListener('submit', async (e) => {
         e.preventDefault(); // Prevent default form POST
@@ -175,40 +172,54 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData(configForm);
         const params = new URLSearchParams();
 
-        // --- V2 API LOGIC (CLEAN) ---
-        // 1. Add required parameters
+        // Add required parameters
         params.append('iface', selectedInterface.name);
         params.append('direction', formData.get('direction'));
-        
-        // 2. Set simplified defaults (V1 API compatibility)
+
+        // --- Simplified Rules ---
+        // We set defaults for rules not yet in the UI
         params.append('protocol', 'all');
         params.append('identifyKey', 'all');
         params.append('identifyValue', 'all');
 
-        // 3. Add all other fields *only if they have a value*
-        const fields = [
-            'rate', 'packetLimit', 'delay', 'jitter', 'delayCorrelation', 'delayDistro',
-            'loss', 'lossCorrelation', 'corrupt', 'duplicate', 'reorder'
-        ];
+        // Add rules from the form (if they have a value)
+        let strategyCount = 1;
         
-        fields.forEach(field => {
-            const value = formData.get(field);
-            if (value) {
-                params.append(field, value);
-            }
-        });
+        const loss = formData.get('loss');
+        if (loss) {
+            params.append('strategy', 'loss');
+            params.append('loss', loss);
+            strategyCount++;
+        }
+
+        const delay = formData.get('delay');
+        if (delay) {
+            const strategyKey = (strategyCount === 1) ? 'strategy' : 'strategy2';
+            const delayKey = (strategyCount === 1) ? 'delay' : 'delay2';
+            params.append(strategyKey, 'delay');
+            params.append(delayKey, delay);
+            strategyCount++;
+        }
         
-        // 4. Build and call the V2 setup endpoint
-        const endpoint = `/tc/api/${API_VERSION}/config/setup?${params.toString()}`;
+        const rate = formData.get('rate');
+        if (rate) {
+            const strategyKey = (strategyCount === 1) ? 'strategy' : 'strategy2';
+            const rateKey = (strategyCount === 1) ? 'rate' : 'rate2';
+            params.append(strategyKey, 'rate');
+            params.append(rateKey, rate);
+        }
+
+        // Use setup2 if multiple strategies, otherwise use setup
+        const endpoint = (strategyCount > 2) ? '/tc/api/v1/config/setup2' : '/tc/api/v1/config/setup';
         
         try {
             await apiRequest(
-                endpoint,
-                `Successfully applied V2 rules to ${selectedInterface.name}.`
+                `${endpoint}?${params.toString()}`,
+                `Successfully applied rules to ${selectedInterface.name}.`
             );
         } catch (err) {
             // Error is already logged by apiRequest
-            logMessage(`Failed to apply V2 rules.`, 'error');
+            logMessage(`Failed to apply rules.`, 'error');
         }
     });
 
@@ -222,11 +233,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const params = new URLSearchParams({ iface: selectedInterface.name });
-        const endpoint = `/tc/api/${API_VERSION}/config/reset?${params.toString()}`;
 
         try {
             await apiRequest(
-                endpoint,
+                `/tc/api/v1/config/reset?${params.toString()}`,
                 `Successfully reset all rules on ${selectedInterface.name}.`
             );
             // Clear the form fields after a successful reset
@@ -242,4 +252,3 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the application
     fetchInterfaces();
 });
-

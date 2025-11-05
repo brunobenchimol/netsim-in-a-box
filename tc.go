@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -231,7 +231,7 @@ func TcRaw(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 	cmd := q.Get("cmd")
 
 	defer r.Body.Close()
-	if b, err := ioutil.ReadAll(r.Body); err != nil {
+	if b, err := io.ReadAll(r.Body); err != nil {
 		return errors.Wrapf(err, "read body")
 	} else if len(b) > 0 {
 		cmd = string(b)

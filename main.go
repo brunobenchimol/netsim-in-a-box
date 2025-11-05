@@ -8,8 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/ossrs/go-oryx-lib/errors"
 	ohttp "github.com/ossrs/go-oryx-lib/http"
@@ -27,7 +30,7 @@ type PreflightCheck struct {
 var isDarwin bool
 var hasIFB bool
 
-const version = "1.1.0"
+const version = "2.0.0"
 
 func init() {
 	ctx := logger.WithContext(context.Background())
@@ -36,7 +39,12 @@ func init() {
 }
 
 func main() {
-	ctx := logger.WithContext(context.Background())
+	// Create a context that is canceled on interrupt signals
+	ctx, cancel := context.WithCancel(logger.WithContext(context.Background()))
+
+	// Setup the signal listener
+	setupGracefulShutdown(ctx, cancel)
+
 	if err := doMain(ctx); err != nil {
 		logger.Ef(ctx, "CRITICAL FAILURE: %v", err)
 
@@ -85,39 +93,13 @@ func doMain(ctx context.Context) error {
 	}
 	logger.Tf(ctx, "Preflight checks passed successfully.")
 
-	/*
-		if _, err := os.Stat(".env"); err == nil {
-			if err := godotenv.Load(".env"); err != nil {
-				panic(err)
-			}
+	if os.Getenv("DEFAULT_GATEWAY_MODE") == "true" {
+		if err := enableGatewayMode(ctx); err != nil {
+			return errors.Wrapf(err, "Failed to enable Default Gateway Mode")
 		}
-		// Set default values for env.
-		setDefaultEnv := func(k, v string) {
-			if os.Getenv(k) == "" {
-				os.Setenv(k, v)
-			}
-		}
-		setDefaultEnv("NODE_ENV", "production")
-		setDefaultEnv("API_LISTEN", "2023")
-		setDefaultEnv("UI_HOST", "127.0.0.1")
-		setDefaultEnv("UI_PORT", "3000")
-		setDefaultEnv("IFACE_FILTER_IPV4", "true")
-		setDefaultEnv("IFACE_FILTER_IPV6", "true")
-		setDefaultEnv("PROXY_ID0_ENABLED", "on")
-		setDefaultEnv("PROXY_ID0_MOUNT", "/restarter/")
-		setDefaultEnv("PROXY_ID0_BACKEND", "http://127.0.0.1:2024")
-		logger.Tf(ctx, "Load .env as NODE_ENV=%v, API_LISTEN=%v, UI_PORT(reactjs)=%v, IFACE_FILTER_IPV4=%v, IFACE_FILTER_IPV6=%v, PROXY0=%v/%v/%v",
-			os.Getenv("NODE_ENV"), os.Getenv("API_LISTEN"), os.Getenv("UI_PORT"), os.Getenv("IFACE_FILTER_IPV4"),
-			os.Getenv("IFACE_FILTER_IPV6"), os.Getenv("PROXY_ID0_ENABLED"), os.Getenv("PROXY_ID0_MOUNT"),
-			os.Getenv("PROXY_ID0_BACKEND"),
-		)
-
-		addr := fmt.Sprintf("%v", os.Getenv("API_LISTEN"))
-		if !strings.Contains(addr, ":") {
-			addr = fmt.Sprintf(":%v", addr)
-		}
-		logger.Tf(ctx, "Listen at %v", addr)
-	*/
+	} else {
+		logger.Tf(ctx, "DEFAULT_GATEWAY_MODE=false. Skipping gateway setup.")
+	}
 
 	addr := os.Getenv("API_LISTEN")
 	if !strings.Contains(addr, ":") {
@@ -125,6 +107,7 @@ func doMain(ctx context.Context) error {
 	}
 	logger.Tf(ctx, "Listen at %v", addr)
 
+	// --- V1 API Handlers ---
 	ep := "/tc/api/v1/versions"
 	logger.Tf(ctx, "Handle %v", ep)
 	http.HandleFunc(ep, func(w http.ResponseWriter, r *http.Request) {
@@ -163,14 +146,6 @@ func doMain(ctx context.Context) error {
 		}
 	})
 
-	ep = "/tc/api/v1/config/setup2"
-	logger.Tf(ctx, "Handle %v", ep)
-	http.HandleFunc(ep, func(w http.ResponseWriter, r *http.Request) {
-		if err := TcSetup2(logger.WithContext(ctx), w, r); err != nil {
-			ohttp.WriteError(ctx, w, r, err)
-		}
-	})
-
 	ep = "/tc/api/v1/config/raw"
 	logger.Tf(ctx, "Handle %v", ep)
 	http.HandleFunc(ep, func(w http.ResponseWriter, r *http.Request) {
@@ -187,61 +162,93 @@ func doMain(ctx context.Context) error {
 		}
 	})
 
-	/*
-		// --- Proxy Handlers (from .env) ---
-		for i := 0; i < 8; i++ {
-			enabledKey := fmt.Sprintf("PROXY_ID%v_ENABLED", i)
-			mountKey := fmt.Sprintf("PROXY_ID%v_MOUNT", i)
-			backendKey := fmt.Sprintf("PROXY_ID%v_BACKEND", i)
-			if os.Getenv(enabledKey) != "on" {
-				if os.Getenv(mountKey) != "" {
-					logger.Tf(ctx, "Proxy to %v is disabled", os.Getenv(mountKey))
-				}
-			} else {
-				if pattern := os.Getenv(mountKey); pattern != "" {
-					backend := os.Getenv(backendKey)
-					target, err := url.Parse(backend)
-					if err != nil {
-						return errors.Wrapf(err, "parse backend %v for #%v pattern %v", backend, i, pattern)
-					}
-
-					logger.Tf(ctx, "Proxy #%v %v to %v", i, pattern, backend)
-					rp := httputil.NewSingleHostReverseProxy(target)
-					http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-						rp.ServeHTTP(w, r)
-					})
-				}
-			}
+	// --- V2 API Handlers ---
+	ep = "/tc/api/v2/init"
+	logger.Tf(ctx, "Handle %v", ep)
+	http.HandleFunc(ep, func(w http.ResponseWriter, r *http.Request) {
+		// V2 init just calls V1 init, as the logic is identical.
+		if err := TcInit(logger.WithContext(ctx), w, r); err != nil {
+			ohttp.WriteError(ctx, w, r, err)
 		}
-	*/
+	})
+
+	ep = "/tc/api/v2/config/setup"
+	logger.Tf(ctx, "Handle %v", ep)
+	http.HandleFunc(ep, func(w http.ResponseWriter, r *http.Request) {
+		if err := TcSetupV2(logger.WithContext(ctx), w, r); err != nil {
+			// V2 returns the full error to the UI
+			ohttp.WriteCplxError(ctx, w, r, ohttp.SystemError(100), err.Error())
+		}
+	})
+
+	ep = "/tc/api/v2/config/reset"
+	logger.Tf(ctx, "Handle %v", ep)
+	http.HandleFunc(ep, func(w http.ResponseWriter, r *http.Request) {
+		if err := TcResetV2(logger.WithContext(ctx), w, r); err != nil {
+			// V2 returns the full error to the UI
+			ohttp.WriteCplxError(ctx, w, r, ohttp.SystemError(100), err.Error())
+		}
+	})
 
 	// --- Static UI Server ---
-	// Serve our new frontend from "./frontend"
-	// This path will be relative to the app's working directory in the Docker
-	uiStaticDir := "./frontend"
-	logger.Tf(ctx, "Serving static UI from %s", uiStaticDir)
+	// V1 (Legacy UI)
+	// Will serve the V1 UI from "./frontend-v1" at the /old/ path
+	uiStaticDirV1 := "./frontend-v1"
+	logger.Tf(ctx, "Serving V1 static UI from %s at /old/", uiStaticDirV1)
+	fsV1 := http.FileServer(http.Dir(uiStaticDirV1))
+	// Register the handler for /old/. StripPrefix removes /old/ from the request
+	// so the FileServer looks for /index.html instead of /old/index.html
+	http.Handle("/old/", http.StripPrefix("/old/", fsV1))
 
-	// Create a file server for our static assets.
-	fs := http.FileServer(http.Dir(uiStaticDir))
+	// V2 (New UI)
+	// Will serve the new V2 UI from "./frontend" at the / path
+	uiStaticDirV2 := "./frontend"
+	logger.Tf(ctx, "Serving V2 static UI from %s at /", uiStaticDirV2)
+	fsV2 := http.FileServer(http.Dir(uiStaticDirV2))
 
-	// Handle all non-API routes by serving the static files
+	// The main handler (/) now serves V2
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Prevent API calls from being handled by the file server
-		// (e.g., /tc/api/v1/init)
-		if strings.HasPrefix(r.URL.Path, "/tc/api/") || strings.HasPrefix(r.URL.Path, "/restarter/") {
+		// Prevent APIs and V1 from being handled by the V2 file server
+		if strings.HasPrefix(r.URL.Path, "/tc/api/") ||
+			strings.HasPrefix(r.URL.Path, "/restarter/") ||
+			strings.HasPrefix(r.URL.Path, "/old/") {
 			http.NotFound(w, r)
 			return
 		}
 
-		// Serve the static file (e.g., /index.html, /app.js)
-		fs.ServeHTTP(w, r)
+		// Serve the V2 file (e.g., /index.html, /app.js)
+		fsV2.ServeHTTP(w, r)
 	})
 	// --- End of Static UI Server ---
 
 	// --- Start Server ---
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		return errors.Wrapf(err, "listen")
+	// We run http.ListenAndServe in a goroutine so it doesn't block
+	// the graceful shutdown listener.
+	httpServer := &http.Server{Addr: addr}
+
+	go func() {
+		logger.Tf(ctx, "HTTP server starting at %v", addr)
+		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
+			logger.Ef(ctx, "HTTP server ListenAndServe error: %v", err)
+		}
+	}()
+
+	// Wait for context cancellation (from graceful shutdown)
+	<-ctx.Done()
+
+	// Shutdown the HTTP server
+	logger.Tf(ctx, "HTTP server shutting down...")
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Ef(ctx, "HTTP server graceful shutdown failed: %v", err)
 	}
+
+	// Finally, run the cleanup
+	logger.Tf(ctx, "Running graceful cleanup of all TC rules...")
+	cleanupAllInterfaces(context.Background()) // Use a new background context
+	logger.Tf(ctx, "Cleanup complete. Exiting.")
 
 	return nil
 }
@@ -402,4 +409,139 @@ func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool)
 	}
 
 	return checks, ok
+}
+
+// runGatewayCommand is a helper to execute system commands for Gateway Mode
+func runGatewayCommand(ctx context.Context, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	logger.Tf(ctx, "GATEWAY_MODE: Running command: %s", cmd.String())
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		logger.Ef(ctx, "GATEWAY_MODE: Error running command: %v\nOutput: %s", err, string(output))
+		return errors.Wrapf(err, "command failed: %s %s", name, strings.Join(args, " "))
+	} else {
+		logger.Tf(ctx, "GATEWAY_MODE: Command successful: %s", cmd.String())
+	}
+	return nil
+}
+
+// enableGatewayMode configures the host (via --net=host) to act as a router/gateway
+func enableGatewayMode(ctx context.Context) error {
+	logger.Tf(ctx, "GATEWAY_MODE: Enabling Default Gateway Mode...")
+
+	// --- Step 1: Enable IP Forwarding ---
+	if err := runGatewayCommand(ctx, "sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
+		return errors.Wrapf(err, "Failed to set net.ipv4.ip_forward")
+	}
+
+	// --- Step 2: Detect WAN (default) Interface ---
+	cmd := exec.CommandContext(ctx, "ip", "route", "show", "default")
+	output, err := cmd.Output()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to get default route. Cannot determine WAN interface.")
+	}
+
+	wanIface := ""
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "default") {
+			parts := strings.Fields(line)
+			for i, part := range parts {
+				if part == "dev" && i+1 < len(parts) {
+					wanIface = parts[i+1]
+					break
+				}
+			}
+		}
+		if wanIface != "" {
+			break
+		}
+	}
+
+	if wanIface == "" {
+		return errors.Errorf("Could not parse default route to find 'dev' interface from: %s", string(output))
+	}
+	logger.Tf(ctx, "GATEWAY_MODE: Detected WAN interface: %s", wanIface)
+
+	// --- Step 3: Apply Permissive iptables Rules ---
+	// Rule 1 (NAT): Allow all forwarded traffic to NAT out the WAN interface
+	if err := runGatewayCommand(ctx, "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", wanIface, "-j", "MASQUERADE"); err != nil {
+		return errors.Wrapf(err, "Failed to apply NAT/MASQUERADE rule")
+	}
+
+	// Rule 2 (Forwarding): Allow traffic to be forwarded TO the WAN interface
+	if err := runGatewayCommand(ctx, "iptables", "-A", "FORWARD", "-o", wanIface, "-j", "ACCEPT"); err != nil {
+		return errors.Wrapf(err, "Failed to apply FORWARD (out) rule")
+	}
+
+	// Rule 3 (Forwarding): Allow return traffic from established connections
+	if err := runGatewayCommand(ctx, "iptables", "-A", "FORWARD", "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+		return errors.Wrapf(err, "Failed to apply FORWARD (state) rule")
+	}
+
+	// --- Step 4: (Opt-in) Reconfigure Host Firewall ---
+	if os.Getenv("RECONFIGURE_FIREWALL") == "true" {
+		logger.Tf(ctx, "GATEWAY_MODE: RECONFIGURE_FIREWALL=true detected.")
+		// Check if ufw command exists
+		if _, err := exec.LookPath("ufw"); err == nil {
+			logger.Tf(ctx, "GATEWAY_MODE: ufw found, attempting to disable it...")
+			if err := runGatewayCommand(ctx, "ufw", "disable"); err != nil {
+				return errors.Wrapf(err, "Failed to disable ufw. Please do this manually.")
+			}
+			logger.Tf(ctx, "GATEWAY_MODE: ufw disabled successfully.")
+		} else {
+			logger.Tf(ctx, "GATEWAY_MODE: ufw command not found, skipping host firewall reconfiguration.")
+		}
+	} else {
+		logger.Tf(ctx, "GATEWAY_MODE: RECONFIGURE_FIREWALL not set. Host firewall (ufw) was NOT touched.")
+		logger.Wf(ctx, "GATEWAY_MODE: WARNING: If ufw is active, it may block forwarded traffic. Set RECONFIGURE_FIREWALL=true or configure ufw manually.")
+	}
+
+	logger.Tf(ctx, "GATEWAY_MODE: Successfully enabled. Host is now a gateway.")
+	return nil
+}
+
+// --- Graceful Shutdown Functions ---
+
+// setupGracefulShutdown listens for OS signals and initiates a cleanup.
+func setupGracefulShutdown(ctx context.Context, cancel context.CancelFunc) {
+	sigChan := make(chan os.Signal, 1)
+	// Notify on INTERRUPT (Ctrl+C) or TERMINATE
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		// Wait for a signal
+		sig := <-sigChan
+		logger.Wf(ctx, "Received signal: %v. Starting graceful shutdown...", sig)
+
+		// Cancel the main context to stop the HTTP server
+		cancel()
+	}()
+}
+
+// cleanupAllInterfaces runs 'tcdel --all' on every active interface.
+func cleanupAllInterfaces(ctx context.Context) {
+	if isDarwin {
+		return // No TC on Darwin
+	}
+
+	logger.Tf(ctx, "Cleaning up all TC rules from all interfaces...")
+
+	// We use a new context, as the main one might be canceled
+	ifaces, err := queryIPNetInterfaces(nil)
+	if err != nil {
+		logger.Ef(ctx, "Cleanup failed: Could not query interfaces: %v", err)
+		return
+	}
+
+	for _, iface := range ifaces {
+		logger.Tf(ctx, "Cleaning up interface: %s", iface.Name)
+		args := []string{"--all", iface.Name}
+		if b, err := exec.CommandContext(ctx, "tcdel", args...).CombinedOutput(); err != nil {
+			// Log error but continue
+			logger.Ef(ctx, "Cleanup failed for %s: %v, %s", iface.Name, err, string(b))
+		}
+	}
+	logger.Tf(ctx, "TC cleanup finished.")
 }

@@ -16,39 +16,39 @@ RUN go mod download
 # Copy the rest of the Go source code
 COPY main.go ./
 COPY tc.go ./
+COPY api_v2.go ./
 
 # Build the static, CGO-disabled binary
 # We output it to a known location.
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /app/tc-ui .
 
-# --- STAGE 2: Tailwind CSS Builder (builder-css) ---
-# This stage builds our production.css
-FROM node:20-alpine AS builder-css
-
-# Set working directory for the UI
-WORKDIR /src/frontend
-
-# --- CACHE OPTIMIZATION ---
-# 1. Copy *only* the package definition files.
-COPY frontend/package.json frontend/package-lock.json ./
-
-# 2. Install dependencies.
-# This layer will only be rebuilt if package.json/lock changes.
+# --- STAGE 2: V1 Tailwind Builder (builder-css-v1) ---
+# Builds the V1 UI from /frontend-v1
+FROM node:20-alpine AS builder-css-v1
+WORKDIR /src/frontend-v1
+# We must use frontend-v1/ prefix for all V1 files
+COPY frontend-v1/package.json frontend-v1/package-lock.json ./
 RUN npm ci
+COPY frontend-v1/tailwind.config.js ./
+COPY frontend-v1/input.css ./
+COPY frontend-v1/index.html ./
+COPY frontend-v1/app.js ./
+RUN npm run build:css
 
-# 3. Now, copy the rest of the UI source code.
-# If only index.html or app.js changes, 'npm ci' above won't re-run.
+# --- STAGE 3: V2 Tailwind Builder (builder-css-v2) ---
+# Builds the V2 UI from /frontend
+FROM node:20-alpine AS builder-css-v2
+WORKDIR /src/frontend
+# We use frontend/ prefix for all V2 files
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 COPY frontend/tailwind.config.js ./
 COPY frontend/input.css ./
 COPY frontend/index.html ./
 COPY frontend/app.js ./
-
-# 4. Build the production CSS.
-# This will run whenever the UI source code changes.
 RUN npm run build:css
-# --- END OPTIMIZATION ---
 
-# --- STAGE 3: Final Runtime Image (final) ---
+# --- STAGE 4: Final Runtime Image (final) ---
 # Use modern Ubuntu 24.04, supporting the build architecture
 FROM ${ARCH}/ubuntu:24.04
 
@@ -59,6 +59,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y --no-install-recommends \
     tcpdump \
     iproute2 \
+    iptables \
+    ufw \
     kmod \
     ca-certificates \
     curl \
@@ -78,14 +80,21 @@ RUN apt update && apt install -y --no-install-recommends \
 # Set the working directory for the application
 WORKDIR /app
 
-# Copy the compiled Go binary from the build stage
+# Copy the compiled Go binary
 COPY --from=builder-go /app/tc-ui /usr/local/bin/tc-ui
 
-# Copy the built UI files from the 'builder-css' stage
-# The main.go handler expects them in './frontend'
-COPY --from=builder-css /src/frontend/index.html ./frontend/
-COPY --from=builder-css /src/frontend/app.js ./frontend/
-COPY --from=builder-css /src/frontend/production.css ./frontend/production.css
+# Copy the built V1 UI from the 'builder-css-v1' stage
+# This serves /old/
+COPY --from=builder-css-v1 /src/frontend-v1/index.html ./frontend-v1/
+COPY --from=builder-css-v1 /src/frontend-v1/app.js ./frontend-v1/
+COPY --from=builder-css-v1 /src/frontend-v1/production.css ./frontend-v1/production.css
+
+# Copy the built V2 UI from the 'builder-css-v2' stage
+# This serves /
+COPY --from=builder-css-v2 /src/frontend/index.html ./frontend/
+COPY --from=builder-css-v2 /src/frontend/app.js ./frontend/
+COPY --from=builder-css-v2 /src/frontend/production.css ./frontend/production.css
+
 
 # Copy squid + supervisord config files
 COPY squid/squid.conf /etc/squid/squid.conf

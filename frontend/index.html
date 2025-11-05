@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NetSim-in-a-Box</title>
+    <title>NetSim-in-a-Box (V2)</title>
     <link href="production.css" rel="stylesheet">
     <script src="app.js" defer></script>
 </head>
@@ -11,9 +11,12 @@
 
     <div class="container max-w-5xl mx-auto p-8">
         
-        <header class="mb-8">
-            <h1 class="text-4xl font-bold text-white mb-2">NetSim-in-a-Box</h1>
-            <p class="text-lg text-gray-400">Network Condition Simulator (tc-ui)</p>
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-bold text-white mb-2">NetSim-in-a-Box</h1>
+                <p class="text-lg text-gray-400">Advanced Network Simulator (V2 API)</p>
+            </div>
+            <a href="/old/" class="text-sm text-blue-400 hover:text-blue-300">&raquo; Go to V1 (simple) UI</a>
         </header>
 
         <main class="bg-gray-800 shadow-xl rounded-lg p-6">
@@ -38,37 +41,95 @@
                 
                 <form id="config-form" class="space-y-6">
                     
-                    <div>
-                        <label for="direction" class="block text-sm font-medium text-gray-300 mb-2">Direction</label>
-                        <select id="direction" name="direction" class="block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                            <option value="outgoing">Outgoing (Egress)</option>
-                            <option value="incoming">Incoming (Ingress)</option>
-                        </select>
-                        <div id="ifb-warning" class="text-yellow-400 text-sm mt-2 p-2 bg-yellow-900 bg-opacity-30 rounded border border-yellow-700" style="display: none;">
+                    <fieldset class="border border-gray-700 p-4 rounded-md">
+                        <legend class="text-lg font-medium text-white px-2">Global Settings</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                            <div>
+                                <label for="direction" class="block text-sm font-medium text-gray-300 mb-2">Direction</label>
+                                <select id="direction" name="direction" class="form-select block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <option value="outgoing">Outgoing (Egress)</option>
+                                    <option value="incoming">Incoming (Ingress)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="rate" class="block text-sm font-medium text-gray-300">Bandwidth (kbps)</label>
+                                <input type="number" name="rate" id="rate" min="0" placeholder="e.g., 1000" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            </div>
+                            <div>
+                                <label for="packetLimit" class="block text-sm font-medium text-gray-300">Packet Limit (count)</label>
+                                <input type="number" name="packetLimit" id="packetLimit" min="0" placeholder="e.g., 1000" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            </div>
+                        </div>
+                        <div id="ifb-warning" class="text-yellow-400 text-sm mt-4 p-2 bg-yellow-900 bg-opacity-30 rounded border border-yellow-700" style="display: none;">
                             <strong>Warning:</strong> 'Incoming' rules require the 'ifb' kernel module on the host. If not loaded, this will fail.
                         </div>
-                    </div>
+                    </fieldset>
+                    
+                    <fieldset class="border border-gray-700 p-4 rounded-md">
+                        <legend class="text-lg font-medium text-white px-2">Latency &amp; Packet Manipulation</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
+                            <div>
+                                <label for="delay" class="block text-sm font-medium text-gray-300">Latency (ms)</label>
+                                <input type="number" name="delay" id="delay" min="0" placeholder="e.g., 100" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            </div>
+                            <div>
+                                <label for="jitter" class="block text-sm font-medium text-gray-300">Jitter (ms)</label>
+                                <input type="number" name="jitter" id="jitter" min="0" placeholder="e.g., 10" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            </div>
+                            <div>
+                                <label for="delayCorrelation" class="block text-sm font-medium text-gray-300">Correlation (%)</label>
+                                <input type="number" name="delayCorrelation" id="delayCorrelation" min="0" max="100" placeholder="e.g., 25" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            </div>
+                            <div>
+                                <label for="delayDistro" class="block text-sm font-medium text-gray-300">Distribution</label>
+                                <select id="delayDistro" name="delayDistro" class="form-select block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <option value="">(default)</option>
+                                    <option value="uniform">Uniform</option>
+                                    <option value="normal">Normal</option>
+                                    <option value="pareto">Pareto</option>
+                                    <option value="paretonormal">Pareto-Normal</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 border-t border-gray-700 pt-4">
+                            <p class="text-sm text-gray-400 mb-2">The following rules require a <strong>Latency</strong> value to be set:</p>
+                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label for="corrupt" class="block text-sm font-medium text-gray-300">Corruption (%)</label>
+                                    <input type="number" name="corrupt" id="corrupt" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
+                                <div>
+                                    <label for="duplicate" class="block text-sm font-medium text-gray-300">Duplicate (%)</label>
+                                    <input type="number" name="duplicate" id="duplicate" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
+                                <div>
+                                    <label for="reorder" class="block text-sm font-medium text-gray-300">Reorder (%)</label>
+                                    <input type="number" name="reorder" id="reorder" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label for="loss" class="block text-sm font-medium text-gray-300">Packet Loss (%)</label>
-                            <input type="number" name="loss" id="loss" min="0" max="100" placeholder="e.g., 0.1" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                    <fieldset class="border border-gray-700 p-4 rounded-md">
+                        <legend class="text-lg font-medium text-white px-2">Packet Loss</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                             <div>
+                                <label for="loss" class="block text-sm font-medium text-gray-300">Loss (%)</label>
+                                <input type="number" name="loss" id="loss" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            </div>
+                            <div>
+                                <label for="lossCorrelation" class="block text-sm font-medium text-gray-300">Correlation (%)</label>
+                                <input type="number" name="lossCorrelation" id="lossCorrelation" min="0" max="100" placeholder="e.g., 25" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            </div>
                         </div>
-                        <div>
-                            <label for="delay" class="block text-sm font-medium text-gray-300">Latency (ms)</label>
-                            <input type="number" name="delay" id="delay" min="0" placeholder="e.g., 100" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                        </div>
-                        <div>
-                            <label for="rate" class="block text-sm font-medium text-gray-300">Bandwidth (kbps)</label>
-                            <input type="number" name="rate" id="rate" min="0" placeholder="e.g., 1000" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                        </div>
-                    </div>
-
+                    </fieldset>
+                    
                     <div class="mt-6 flex justify-between pt-4 border-t border-gray-700">
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                            Apply Rules
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
+                            Apply V2 Rules
                         </button>
-                        <button type="button" id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                        <button type="button" id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
                             Reset All Rules
                         </button>
                     </div>
