@@ -21,7 +21,6 @@
 
         <main class="bg-gray-800 shadow-xl rounded-lg p-6">
 
-            <!-- Step 1: Interface Selection -->
             <section class="mb-6">
                 <h2 class="text-2xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">1. Select Network Interface</h2>
                 <div id="loading-interfaces" class="text-gray-400">
@@ -32,11 +31,9 @@
                     Fetching available network interfaces...
                 </div>
                 <div id="interfaces-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <!-- Interface cards will be injected here -->
-                </div>
+                    </div>
             </section>
 
-            <!-- Step 2: Configuration Form -->
             <section id="config-form-section" class="mb-6" style="display: none;">
                 <h2 class="text-2xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">
                     2. Configure Rules for <span id="selected-iface-name" class="text-blue-400"></span>
@@ -44,7 +41,6 @@
                 
                 <form id="config-form" class="space-y-6">
                     
-                    <!-- Global Settings -->
                     <fieldset class="border border-gray-700 p-4 rounded-md">
                         <legend class="text-lg font-medium text-white px-2">Global Settings</legend>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -75,11 +71,9 @@
                                     </select>
                                 </div>
                             </div>
-
                         </div>
                     </fieldset>
                     
-                    <!-- Latency & Jitter -->
                     <fieldset class="border border-gray-700 p-4 rounded-md">
                         <legend class="text-lg font-medium text-white px-2">Latency & Jitter</legend>
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
@@ -108,7 +102,6 @@
                         </div>
                     </fieldset>
 
-                    <!-- Packet Manipulation -->
                     <fieldset class="border border-gray-700 p-4 rounded-md">
                         <legend class="text-lg font-medium text-white px-2">Packet Manipulation</legend>
                         
@@ -129,7 +122,15 @@
                                     Each packet has an independent chance of being lost (<b>random PERCENT</b>). If in doubt, fill in only 'Loss (%)'. 'Correlation' is optional.
                                 </p>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="loss" class="block text-sm font-medium text-gray-300">Loss (%)</label>
+                                        <input type="number" name="loss" id="loss" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                                     </div>
+                                    <div>
+                                        <label for="lossCorrelation" class="block text-sm font-medium text-gray-300">Correlation (%)</label>
+                                        <input type="number" name="lossCorrelation" id="lossCorrelation" min="0" max="100" placeholder="e.g., 25" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                </div>
                             </div>
 
                             <div id="loss-state-form" class="hidden space-y-4">
@@ -138,7 +139,27 @@
                                     Uses a 4-state Markov chain (<b>state P13 [ P31 ... ]</b>). <strong>If in doubt, fill in only 'P13' (%)</strong> for simple (Bernoulli) losses. The other fields are optional and positional.
                                 </p>
                                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                    <div>
+                                        <label for="lossStateP13" class="block text-sm font-medium text-gray-300">P13 (req)</label>
+                                        <input type="number" name="lossStateP13" id="lossStateP13" min="0" max="100" step="0.01" placeholder="e.g., 10" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                                     </div>
+                                    <div>
+                                        <label for="lossStateP31" class="block text-sm font-medium text-gray-300">P31</label>
+                                        <input type="number" name="lossStateP31" id="lossStateP31" min="0" max="100" step="0.01" placeholder="e.g., 90" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                    <div>
+                                        <label for="lossStateP32" class="block text-sm font-medium text-gray-300">P32</label>
+                                        <input type="number" name="lossStateP32" id="lossStateP32" min="0" max="100" step="0.01" placeholder="e.g., 1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                    <div>
+                                        <label for="lossStateP23" class="block text-sm font-medium text-gray-300">P23</label>
+                                        <input type="number" name="lossStateP23" id="lossStateP23" min="0" max="100" step="0.01" placeholder="e.g., 1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                    <div>
+                                        <label for="lossStateP14" class="block text-sm font-medium text-gray-300">P14</label>
+                                        <input type="number" name="lossStateP14" id="lossStateP14" min="0" max="100" step="0.01" placeholder="e.g., 1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                </div>
                             </div>
 
                             <div id="loss-gemodel-form" class="hidden space-y-4">
@@ -147,9 +168,51 @@
                                     Burst loss model (<b>gemodel PERCENT [ R ... ]</b>). <strong>If in doubt, fill in only 'p' (%)</strong> (probability of starting a loss burst). The other fields are optional and positional.
                                 </p>
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div>
+                                        <label for="lossGemodelP" class="block text-sm font-medium text-gray-300">p (%) (req)</label>
+                                        <input type="number" name="lossGemodelP" id="lossGemodelP" min="0" max="100" step="0.01" placeholder="e.g., 1.0" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                                     </div>
+                                    <div>
+                                        <label for="lossGemodelR" class="block text-sm font-medium text-gray-300">r (%)</label>
+                                        <input type="number" name="lossGemodelR" id="lossGemodelR" min="0" max="100" step="0.01" placeholder="e.g., 99.0" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                    <div>
+                                        <label for="lossGemodel1h" class="block text-sm font-medium text-gray-300">1-h (%)</label>
+                                        <input type="number" name="lossGemodel1h" id="lossGemodel1h" min="0" max="100" step="0.01" placeholder="e.g., 50.0" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                    <div>
+                                        <label for="lossGemodel1k" class="block text-sm font-medium text-gray-300">1-k (%)</label>
+                                        <input type="number" name="lossGemodel1k" id="lossGemodel1k" min="0" max="100" step="0.01" placeholder="e.g., 1.0" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    </div>
+                                </div>
                             </div>
-                        </div> </fieldset>
+                        </div> <div class="border-t border-gray-700 my-4"></div>
+
+                        <label class="block text-sm font-medium text-gray-400 mb-2">Other Manipulations</Slabel>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-4">
+                            <div>
+                                <label for="corrupt" class="block text-sm font-medium text-gray-300">Packet Corruption</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="corrupt" id="corrupt" min="0" max="100" step="0.01" placeholder="Corrupt (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="corruptCorrelation" id="corruptCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="duplicate" class="block text-sm font-medium text-gray-300">Packet Duplication</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="duplicate" id="duplicate" min="0" max="100" step="0.01" placeholder="Duplicate (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="duplicateCorrelation" id="duplicateCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="reorder" class="block text-sm font-medium text-gray-300">Packet Reordering (requires Delay)</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="reorder" id="reorder" min="0" max="100" step="0.01" placeholder="Reorder (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="reorderCorrelation" id="reorderCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
                     
                     <div class="mt-6 flex justify-between pt-4 border-t border-gray-700">
                         <button type="submit" id="apply-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
@@ -160,20 +223,8 @@
                         </button>
                     </div>
                 </form>
-            </section>                    
-                    <!-- Form Actions -->
-                    <div class="mt-6 flex justify-between pt-4 border-t border-gray-700">
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
-                            Apply Rules
-                        </button>
-                        <button type="button" id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
-                            Reset All Rules
-                        </button>
-                    </div>
-                </form>
             </section>
 
-            <!-- Step 3: Log Output -->
             <section>
                 <h2 class="text-xl font-semibold text-white mb-3">Log Output</h2>
                 <pre id="log-output" class="bg-gray-900 text-sm text-gray-400 p-4 rounded-lg h-48 overflow-y-auto font-mono"></pre>
