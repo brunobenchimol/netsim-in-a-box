@@ -23,8 +23,8 @@ RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /app/tc-ui .
 # Builds the UI from /frontend
 FROM node:20-alpine AS builder-css
 WORKDIR /src/frontend
-# We use frontend/ prefix for all V3 files
-COPY frontend/package.json frontend/package-lock.json ./
+# Copy package.json. Use * to tolerate npm/yarn lockfiles
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 COPY frontend/tailwind.config.js frontend/input.css frontend/index.html frontend/app.js ./
 RUN npm run build:css
@@ -56,7 +56,7 @@ WORKDIR /app
 # Copy the compiled Go binary
 COPY --from=builder-go /app/tc-ui /usr/local/bin/tc-ui
 
-# # Copy the built V3 UI (V1 is gone)
+# Copy the built V4 UI
 # This serves /
 COPY --from=builder-css /src/frontend/index.html ./frontend/
 COPY --from=builder-css /src/frontend/app.js ./frontend/

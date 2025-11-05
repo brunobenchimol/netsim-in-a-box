@@ -16,6 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const directionSelect = document.getElementById('direction');
     const ifbWarning = document.getElementById('ifb-warning');
 
+    const delayInput = document.getElementById('delay');
+    const jitterInput = document.getElementById('jitter');
+    const delayCorrelationInput = document.getElementById('delayCorrelation');
+    const distributionInput = document.getElementById('distribution');
+
     let selectedInterface = null; // Stores the selected interface
 
     /**
@@ -38,6 +43,41 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Auto-scroll to the bottom
         logOutputEl.scrollTop = logOutputEl.scrollHeight;
+    }
+
+    /**
+     * Updates the disabled state of netem inputs based on dependencies
+     */
+    function updateInputDependencies() {
+        const delayVal = delayInput.value;
+        const jitterVal = jitterInput.value;
+
+        // Check if delay is set
+        const hasDelay = (delayVal !== "" && delayVal !== "0");
+        
+        // Jitter, Correlation, and Distribution all depend on Delay
+        jitterInput.disabled = !hasDelay;
+        delayCorrelationInput.disabled = !hasDelay;
+        distributionInput.disabled = !hasDelay;
+
+        // If Delay is gone, clear them
+        if (!hasDelay) {
+            jitterInput.value = "";
+            delayCorrelationInput.value = "";
+            distributionInput.value = ""; // Or set to default
+        }
+
+        // Now, check Jitter
+        const hasJitter = (jitterInput.value !== "" && jitterInput.value !== "0");
+        
+        // Delay Correlation depends on Jitter
+        // (It's already disabled if delay is 0, but we add this for clarity)
+        if (!hasJitter) {
+            delayCorrelationInput.disabled = true;
+            delayCorrelationInput.value = "";
+        } else if (hasDelay) { // Only re-enable if parent (delay) is set
+            delayCorrelationInput.disabled = false;
+        }
     }
 
     /**
@@ -222,6 +262,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    delayInput.addEventListener('input', updateInputDependencies);
+    jitterInput.addEventListener('input', updateInputDependencies);
+
     // Initialize the application
     fetchInterfaces();
+    updateInputDependencies(); // Call on load to set initial state
 });

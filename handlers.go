@@ -53,12 +53,15 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 		if errStr == "" {
 			errStr = err.Error()
 		}
-		// Don't return error for "RTNETLINK answers: No such file or directory"
-		// which happens when trying to delete a non-existent qdisc (normal cleanup)
-		if strings.Contains(errStr, "No such file or directory") {
-			log.Printf("[DEBUG] V4: Command %s (cleanup): %s", cmd.String(), errStr)
+		// --- Suppress more benign cleanup errors ---
+		// Don't return error for cleanup messages.
+		if strings.Contains(errStr, "No such file or directory") ||
+			strings.Contains(errStr, "Cannot find specified qdisc") ||
+			strings.Contains(errStr, "Cannot find device") ||
+			strings.Contains(errStr, "Cannot delete qdisc with handle of zero") {
 			return nil
 		}
+
 		log.Printf("[ERROR] V4: Command %s failed: %s", cmd.String(), errStr)
 		return fmt.Errorf("%s %v: %s", name, args, errStr)
 	}
@@ -239,19 +242,32 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 	hasNetemRules := false
 
 	// Delay, Jitter, Correlation, Distribution
+	// We now trust the UI to send valid, dependent combinations.
 	if v.Delay != "" {
 		hasNetemRules = true
 		netemArgs = append(netemArgs, "delay", fmt.Sprintf("%vms", v.Delay))
+
+		// Jitter is positional, requires Delay
 		if v.Jitter != "" {
-			netemArgs = append(netemArgs, fmt.Sprintf("%vms", v.Jitter))
+			jitterVal := v.Jitter
+			// Fix: 'distribution' requires a non-zero jitter.
+			if (jitterVal == "0") && v.Distribution != "" {
+				jitterVal = "1" // Force 1ms
+			}
+			netemArgs = append(netemArgs, fmt.Sprintf("%vms", jitterVal))
+
+			// Correlation is positional, requires Jitter
+			if v.DelayCorrelation != "" {
+				netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.DelayCorrelation))
+			}
 		}
-		if v.DelayCorrelation != "" {
-			netemArgs = append(netemArgs, "correlation", fmt.Sprintf("%v%%", v.DelayCorrelation))
-		}
+
+		// Distribution is keyword, requires Delay (and non-zero Jitter)
 		if v.Distribution != "" {
 			netemArgs = append(netemArgs, "distribution", v.Distribution)
 		}
 	}
+
 	// Loss, Loss Correlation
 	if v.Loss != "" {
 		hasNetemRules = true
@@ -260,6 +276,7 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 			netemArgs = append(netemArgs, "correlation", fmt.Sprintf("%v%%", v.LossCorrelation))
 		}
 	}
+
 	// Other Netem rules
 	if v.Corrupt != "" {
 		hasNetemRules = true
@@ -285,15 +302,15 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 
 	// 5a. API Filter (Prio 1) -> "Fast" Class (1:10)
 	// (We use --dport or --sport depending on direction)
-	if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "parent", "1:", "prio", "1",
-		"protocol", "tcp", "u32", "match", "ip", apiFilterPortCmd, v.ApiPort, "0xffff",
+	if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "protocol", "ip", "parent", "1:", "prio", "1",
+		"u32", "match", "ip", apiFilterPortCmd, v.ApiPort, "0xffff",
 		"flowid", "1:10"); err != nil {
 		return fmt.Errorf("V4: failed to add 'fast' API filter: %w", err)
 	}
 
 	// 5b. "All Else" Filter (Prio 2) -> "Slow" Class (1:11)
-	if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "parent", "1:", "prio", "2",
-		"protocol", "all", "u32", "match", "u32", "0", "0",
+	if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "protocol", "all", "parent", "1:", "prio", "2",
+		"u32", "match", "u32", "0", "0",
 		"flowid", "1:11"); err != nil {
 		return fmt.Errorf("V4: failed to add default 'slow' filter: %w", err)
 	}

@@ -32,9 +32,14 @@ var isDarwin bool
 var hasIFB bool // V4: This is now vital
 
 const version = "4.0.0" // V4: Pure Go TC
+const apiVersion = "v2" // The API path we are serving
 
 func init() {
 	isDarwin = runtime.GOOS == "darwin"
+
+	// --- Standardize log format ---
+	// Use ISO 8601 date, time, and UTC
+	log.SetFlags(log.LstdFlags | log.LUTC)
 	log.Printf("[INFO] OS darwin=%v", isDarwin)
 }
 
@@ -102,17 +107,21 @@ func doMain(ctx context.Context) error {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	// Use a custom logger middleware to match our log format
+	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	// --- API Routes ---
 	r.Get("/tc/api/version", func(w http.ResponseWriter, r *http.Request) {
-		respondWithJSON(w, http.StatusOK, map[string]string{"version": version})
+		respondWithJSON(w, http.StatusOK, map[string]string{
+			"software_version": version,
+			"api_version":      apiVersion,
+		})
 	})
 
 	// Our V4 routes (keeping /v2/ path for compatibility)
-	r.Route("/tc/api/v2/config", func(r chi.Router) {
+	r.Route(fmt.Sprintf("/tc/api/%s/config", apiVersion), func(r chi.Router) {
 		r.Get("/init", handleTcInit)
 		r.Get("/setup", handleTcSetupV4) // Mapped to the new V4 handler
 		r.Get("/reset", handleTcResetV4) // Mapped to the new V4 handler
@@ -121,14 +130,14 @@ func doMain(ctx context.Context) error {
 	})
 
 	// --- Static File Server ---
-	uiStaticDirV3 := "./frontend"
-	log.Printf("[INFO] Serving V4 static UI from %s at /", uiStaticDirV3)
-	fsV3 := http.StripPrefix("/", http.FileServer(http.Dir(uiStaticDirV3)))
+	uiStaticDir := "./frontend"
+	log.Printf("[INFO] Serving V4 static UI from %s at /", uiStaticDir)
+	fsV3 := http.StripPrefix("/", http.FileServer(http.Dir(uiStaticDir)))
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		f, err := os.Stat(uiStaticDirV3 + r.URL.Path)
+		f, err := os.Stat(uiStaticDir + r.URL.Path)
 		if os.IsNotExist(err) || f.IsDir() {
 			// If file doesn't exist (or is a dir), serve index.html for SPA routing
-			http.ServeFile(w, r, uiStaticDirV3+"/index.html")
+			http.ServeFile(w, r, uiStaticDir+"/index.html")
 			return
 		}
 		// Otherwise, serve the static file
@@ -162,6 +171,24 @@ func doMain(ctx context.Context) error {
 	log.Println("[INFO] Cleanup complete. Exiting.")
 
 	return nil
+}
+
+func LoggerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+		next.ServeHTTP(ww, r)
+
+		latency := time.Since(start)
+
+		log.Printf("[ACCESS] %s %s - %d (%s)",
+			r.Method,
+			r.RequestURI,
+			ww.Status(),
+			latency,
+		)
+	})
 }
 
 // --- HTTP Response Helpers ---
