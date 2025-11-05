@@ -12,34 +12,18 @@ WORKDIR /src
 # This optimizes the Docker layer cache.
 COPY go.mod go.sum ./
 RUN go mod download
-
-# Copy the rest of the Go source code
-COPY main.go ./
-COPY tc.go ./
-COPY api_v2.go ./
+# Copy main.go and handlers.go 
+COPY main.go handlers.go ./
 
 # Build the static, CGO-disabled binary
 # We output it to a known location.
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /app/tc-ui .
 
-# --- STAGE 2: V1 Tailwind Builder (builder-css-v1) ---
-# Builds the V1 UI from /frontend-v1
-FROM node:20-alpine AS builder-css-v1
-WORKDIR /src/frontend-v1
-# We must use frontend-v1/ prefix for all V1 files
-COPY frontend-v1/package.json frontend-v1/package-lock.json ./
-RUN npm ci
-COPY frontend-v1/tailwind.config.js ./
-COPY frontend-v1/input.css ./
-COPY frontend-v1/index.html ./
-COPY frontend-v1/app.js ./
-RUN npm run build:css
-
-# --- STAGE 3: V2 Tailwind Builder (builder-css-v2) ---
-# Builds the V2 UI from /frontend
-FROM node:20-alpine AS builder-css-v2
+# --- STAGE 2: V3 Tailwind Builder (builder-css) ---
+# Builds the UI from /frontend
+FROM node:20-alpine AS builder-css
 WORKDIR /src/frontend
-# We use frontend/ prefix for all V2 files
+# We use frontend/ prefix for all V3 files
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/tailwind.config.js ./
@@ -48,7 +32,7 @@ COPY frontend/index.html ./
 COPY frontend/app.js ./
 RUN npm run build:css
 
-# --- STAGE 4: Final Runtime Image (final) ---
+# --- STAGE 3: Final Runtime Image (final) ---
 # Use modern Ubuntu 24.04, supporting the build architecture
 FROM ${ARCH}/ubuntu:24.04
 
@@ -70,7 +54,7 @@ RUN apt update && apt install -y --no-install-recommends \
     squid \
     supervisor \
     && \
-    # Install tcconfig using the official script
+    # Install tcconfig using the official script (to be removed on v3 api)
     curl -sSL https://raw.githubusercontent.com/thombashi/tcconfig/master/scripts/installer.sh | bash \
     && \
     # Clean up apt cache
@@ -83,18 +67,11 @@ WORKDIR /app
 # Copy the compiled Go binary
 COPY --from=builder-go /app/tc-ui /usr/local/bin/tc-ui
 
-# Copy the built V1 UI from the 'builder-css-v1' stage
-# This serves /old/
-COPY --from=builder-css-v1 /src/frontend-v1/index.html ./frontend-v1/
-COPY --from=builder-css-v1 /src/frontend-v1/app.js ./frontend-v1/
-COPY --from=builder-css-v1 /src/frontend-v1/production.css ./frontend-v1/production.css
-
-# Copy the built V2 UI from the 'builder-css-v2' stage
+# # Copy the built V3 UI (V1 is gone)
 # This serves /
-COPY --from=builder-css-v2 /src/frontend/index.html ./frontend/
-COPY --from=builder-css-v2 /src/frontend/app.js ./frontend/
-COPY --from=builder-css-v2 /src/frontend/production.css ./frontend/production.css
-
+COPY --from=builder-css /src/frontend/index.html ./frontend/
+COPY --from=builder-css /src/frontend/app.js ./frontend/
+COPY --from=builder-css /src/frontend/production.css ./frontend/production.css
 
 # Copy squid + supervisord config files
 COPY squid/squid.conf /etc/squid/squid.conf

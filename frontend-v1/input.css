@@ -1,8 +1,0 @@
-/*
-This file is the entry point for the Tailwind CLI.
-It imports the three main Tailwind layers.
-*/
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;

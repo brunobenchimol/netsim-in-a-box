@@ -1,5 +1,5 @@
-module tc-ui
+module netsim
 
 go 1.23
 
-require github.com/ossrs/go-oryx-lib v0.0.10
+require github.com/go-chi/chi/v5 v5.0.12

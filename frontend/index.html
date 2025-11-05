@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NetSim-in-a-Box (V2)</title>
+    <title>NetSim-in-a-Box (V3)</title>
     <link href="production.css" rel="stylesheet">
     <script src="app.js" defer></script>
 </head>
@@ -14,10 +14,9 @@
         <header class="mb-8 flex justify-between items-center">
             <div>
                 <h1 class="text-4xl font-bold text-white mb-2">NetSim-in-a-Box</h1>
-                <p class="text-lg text-gray-400">Advanced Network Simulator (V2 API)</p>
+                <p class="text-lg text-gray-400">Advanced Network Simulator (V3)</p>
             </div>
-            <a href="/old/" class="text-sm text-blue-400 hover:text-blue-300">&raquo; Go to V1 (simple) UI</a>
-        </header>
+            </header>
 
         <main class="bg-gray-800 shadow-xl rounded-lg p-6">
 
@@ -76,12 +75,8 @@
                                 <label for="jitter" class="block text-sm font-medium text-gray-300">Jitter (ms)</label>
                                 <input type="number" name="jitter" id="jitter" min="0" placeholder="e.g., 10" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                             </div>
-                            <div>
-                                <label for="delayCorrelation" class="block text-sm font-medium text-gray-300">Correlation (%)</label>
-                                <input type="number" name="delayCorrelation" id="delayCorrelation" min="0" max="100" placeholder="e.g., 25" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                            </div>
-                            <div>
-                                <label for="delayDistro" class="block text-sm font-medium text-gray-300">Distribution</label>
+                            <div class="md:col-span-2">
+                                <label for="delayDistro" class="block text-sm font-medium text-gray-300">Distribution (if Jitter is 0)</label>
                                 <select id="delayDistro" name="delayDistro" class="form-select block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                                     <option value="">(default)</option>
                                     <option value="uniform">Uniform</option>
@@ -112,22 +107,22 @@
                     </fieldset>
 
                     <fieldset class="border border-gray-700 p-4 rounded-md">
-                        <legend class="text-lg font-medium text-white px-2">Packet Loss</legend>
+                        <legend class="text-lg font-medium text-white px-2">Packet Loss (Independent)</legend>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                              <div>
                                 <label for="loss" class="block text-sm font-medium text-gray-300">Loss (%)</label>
                                 <input type="number" name="loss" id="loss" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                             </div>
-                            <div>
-                                <label for="lossCorrelation" class="block text-sm font-medium text-gray-300">Correlation (%)</label>
-                                <input type="number" name="lossCorrelation" id="lossCorrelation" min="0" max="100" placeholder="e.g., 25" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                            <div class="opacity-50">
+                                <label for="lossCorrelation" class="block text-sm font-medium text-gray-500">Correlation (%)</label>
+                                <input type="number" name="lossCorrelation" id="lossCorrelation" min="0" max="100" placeholder="Not supported by tcconfig" class="form-input mt-1 block w-full bg-gray-800 border-gray-700 rounded-md p-2 text-white" disabled>
                             </div>
                         </div>
                     </fieldset>
                     
                     <div class="mt-6 flex justify-between pt-4 border-t border-gray-700">
                         <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
-                            Apply V2 Rules
+                            Apply Rules
                         </button>
                         <button type="button" id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
                             Reset All Rules

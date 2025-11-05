@@ -2,7 +2,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // API Version
-    const API_VERSION = 'v2';
+    const API_VERSION = 'v2'; // Path still uses v2
     
     // DOM References
     const loadingEl = document.getElementById('loading-interfaces');
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const responseText = await response.text(); // Read text first
 
             if (!response.ok) {
-                // Try to parse error from V2 JSON, fallback to text
+                // Try to parse error from V3 JSON, fallback to text
                 try {
                     const errJson = JSON.parse(responseText);
                     throw new Error(`API Error: ${errJson.message || 'Unknown error'}`);
@@ -74,11 +74,10 @@ document.addEventListener('DOMContentLoaded', () => {
      * Fetches network interfaces from the API
      */
     async function fetchInterfaces() {
-        logMessage(`Fetching network interfaces from API (/${API_VERSION}/init)...`);
+        logMessage(`Fetching network interfaces from API (/${API_VERSION}/config/init)...`);
         try {
-            // --- CORRECTION HERE ---
-            // Now correctly uses the API_VERSION variable
-            const response = await fetch(`/tc/api/${API_VERSION}/init`);
+            // Correct, standardized path
+            const response = await fetch(`/tc/api/${API_VERSION}/config/init`);
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -162,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     /**
-     * Handles the form submission to apply V2 TC rules
+     * Handles the form submission to apply V3 TC rules
      */
     configForm.addEventListener('submit', async (e) => {
         e.preventDefault(); // Prevent default form POST
@@ -175,19 +174,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData(configForm);
         const params = new URLSearchParams();
 
-        // --- V2 API LOGIC (CLEAN) ---
         // 1. Add required parameters
         params.append('iface', selectedInterface.name);
         params.append('direction', formData.get('direction'));
         
-        // 2. Set simplified defaults (V1 API compatibility)
+        // 2. Set simplified defaults
         params.append('protocol', 'all');
         params.append('identifyKey', 'all');
         params.append('identifyValue', 'all');
 
         // 3. Add all other fields *only if they have a value*
         const fields = [
-            'rate', 'packetLimit', 'delay', 'jitter', 'delayCorrelation', 'delayDistro',
+            'rate', 'packetLimit', 'delay', 'jitter', 'delayDistro',
             'loss', 'lossCorrelation', 'corrupt', 'duplicate', 'reorder'
         ];
         
@@ -198,17 +196,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // 4. Build and call the V2 setup endpoint
+        // 4. Build and call the V3 setup endpoint (which is /v2/ path)
         const endpoint = `/tc/api/${API_VERSION}/config/setup?${params.toString()}`;
         
         try {
             await apiRequest(
                 endpoint,
-                `Successfully applied V2 rules to ${selectedInterface.name}.`
+                `Successfully applied V3 rules to ${selectedInterface.name}.`
             );
         } catch (err) {
             // Error is already logged by apiRequest
-            logMessage(`Failed to apply V2 rules.`, 'error');
+            logMessage(`Failed to apply V3 rules.`, 'error');
         }
     });
 
@@ -242,4 +240,3 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the application
     fetchInterfaces();
 });
-
