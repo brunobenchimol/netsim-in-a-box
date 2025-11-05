@@ -1,5 +1,14 @@
 # NetSim-in-a-Box
 
+<p align="center">
+  <a href="https://github.com/brunobenchimol/netsim-in-a-box/actions/workflows/docker-publish.yml">
+    <img src="https://github.com/brunobenchimol/netsim-in-a-box/actions/workflows/docker-publish.yml/badge.svg" alt="CI/CD Status">
+  </a>
+  <a href="https://hub.docker.com/r/brunobenchimol/netsim-in-a-box">
+    <img src="https://img.shields.io/docker/pulls/brunobenchimol/netsim-in-a-box?style=flat&logo=docker&label=docker%20pulls" alt="Docker Pulls">
+  </a>
+</p>
+
 **A self-contained, Docker-based network simulation tool for developers.**
 
 This tool provides a simple web interface (`tc-ui`) and a proxy (`squid`) in a single container. It allows development teams to easily simulate adverse network conditions (like high latency, packet loss, and bandwidth throttling) on their local machines by manipulating the host's Linux traffic control (`tc`) settings. 

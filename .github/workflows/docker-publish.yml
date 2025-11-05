@@ -1,0 +1,72 @@
+# .github/workflows/docker-publish.yml
+
+name: Publish Docker Image to Hub
+
+# 1. TRIGGER:
+# This workflow runs on two conditions:
+# - When a new 'tag' starting with 'v' (e.g., v4.2.0) is pushed.
+# - Manually, via the "Actions" tab (workflow_dispatch).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Checks out the repository's code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Sets up QEMU (necessary for multi-architecture builds)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 3. Sets up Docker Buildx (the modern builder)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 4. Logs in to Docker Hub using the repository secrets
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 5. Intelligently extracts metadata (tags and labels)
+      # This turns a git tag 'v4.2.0' into Docker tags:
+      # - brunobenchimol/netsim-in-a-box:latest
+      # - brunobenchimol/netsim-in-a-box:4.2.0
+      # - brunobenchimol/netsim-in-a-box:4.2
+      # - brunobenchimol/netsim-in-a-box:4
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: brunobenchimol/netsim-in-a-box
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=true
+
+      # 6. The main build and push step
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # Pushes with the tags and labels from the 'meta' step
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Builds for AMD64 and ARM64 (for Apple Silicon, Raspberry Pi, etc.)
+          platforms: linux/amd64,linux/arm64
+          # Adds caching for faster future builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
