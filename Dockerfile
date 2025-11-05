@@ -26,10 +26,7 @@ WORKDIR /src/frontend
 # We use frontend/ prefix for all V3 files
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-COPY frontend/tailwind.config.js ./
-COPY frontend/input.css ./
-COPY frontend/index.html ./
-COPY frontend/app.js ./
+COPY frontend/tailwind.config.js frontend/input.css frontend/index.html frontend/app.js ./
 RUN npm run build:css
 
 # --- STAGE 3: Final Runtime Image (final) ---
@@ -41,21 +38,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install all runtime dependencies identified by our preflight checks
 RUN apt update && apt install -y --no-install-recommends \
-    tcpdump \
     iproute2 \
     iptables \
     ufw \
     kmod \
     ca-certificates \
-    curl \
-    jq \
-    python3-pip \
-    # Add Squid and Supervisor
     squid \
     supervisor \
-    && \
-    # Install tcconfig using the official script (to be removed on v3 api)
-    curl -sSL https://raw.githubusercontent.com/thombashi/tcconfig/master/scripts/installer.sh | bash \
     && \
     # Clean up apt cache
     apt clean \

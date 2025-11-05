@@ -4,19 +4,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json" // For JSON responses
+	"encoding/json"
 	"fmt"
-	"log" // Replaces oryx-logger
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal" // Import for graceful shutdown
+	"os/signal"
 	"runtime"
 	"strings"
-	"syscall" // Import for graceful shutdown
-	"time"    // Import for shutdown timeout
+	"syscall"
+	"time"
 
-	"github.com/go-chi/chi/v5" // Chi router
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -29,9 +29,9 @@ type PreflightCheck struct {
 }
 
 var isDarwin bool
-var hasIFB bool
+var hasIFB bool // V4: This is now vital
 
-const version = "3.0.0" // V3
+const version = "4.0.0" // V4: Pure Go TC
 
 func init() {
 	isDarwin = runtime.GOOS == "darwin"
@@ -39,31 +39,24 @@ func init() {
 }
 
 func main() {
-	// --- Graceful Shutdown Setup ---
-	// Create a context that is canceled on interrupt signals
+	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Setup the signal listener
 	setupGracefulShutdown(cancel)
 
 	if err := doMain(ctx); err != nil {
-		// If doMain fails on startup, we still want to exit.
 		log.Printf("[CRITICAL] CRITICAL FAILURE: %v", err)
-
 		fmt.Println("-------------------------------------------------")
 		fmt.Printf("ERROR: Application failed to start.\n")
 		fmt.Printf("REASON: %v\n", err)
 		fmt.Println("-------------------------------------------------")
-
 		os.Exit(1)
-		return
 	}
 }
 
 func doMain(ctx context.Context) error {
-	log.Println("[INFO] WebUI for TC(Linux Traffic Control) https://lartc.org/howto/index.html")
+	log.Println("[INFO] WebUI for TC(Linux Traffic Control) V4")
 
-	// Set default API_LISTEN port
+	// Set default API port
 	if os.Getenv("API_LISTEN") == "" {
 		os.Setenv("API_LISTEN", "2023")
 	}
@@ -78,7 +71,6 @@ func doMain(ctx context.Context) error {
 		if check.Status {
 			statusMsg = "OK"
 		}
-
 		logFunc := log.Printf // Default to INFO
 		if !check.Status && check.Required {
 			logFunc = func(format string, v ...interface{}) { log.Printf("[ERROR] "+format, v...) }
@@ -108,11 +100,9 @@ func doMain(ctx context.Context) error {
 
 	// --- Chi Router Setup ---
 	r := chi.NewRouter()
-
-	// Standard middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger) // Chi's built-in request logger
+	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
@@ -120,26 +110,21 @@ func doMain(ctx context.Context) error {
 	r.Get("/tc/api/version", func(w http.ResponseWriter, r *http.Request) {
 		respondWithJSON(w, http.StatusOK, map[string]string{"version": version})
 	})
-	// We keep the V2 paths for frontend compatibility
+
+	// Our V4 routes (keeping /v2/ path for compatibility)
 	r.Route("/tc/api/v2/config", func(r chi.Router) {
 		r.Get("/init", handleTcInit)
-		r.Get("/setup", handleTcSetupV2) // Use GET for simplicity with query params
-		r.Get("/reset", handleTcResetV2) // Use GET for simplicity with query params
-		// Add the raw diagnostic endpoint
+		r.Get("/setup", handleTcSetupV4) // Mapped to the new V4 handler
+		r.Get("/reset", handleTcResetV4) // Mapped to the new V4 handler
 		r.MethodFunc("GET", "/raw", handleTcRaw)
 		r.MethodFunc("POST", "/raw", handleTcRaw)
 	})
 
 	// --- Static File Server ---
-	// Serve the V3 frontend from "./frontend"
 	uiStaticDirV3 := "./frontend"
-	log.Printf("[INFO] Serving V3 static UI from %s at /", uiStaticDirV3)
-
-	// Serve static files (e.g., app.js, production.css)
+	log.Printf("[INFO] Serving V4 static UI from %s at /", uiStaticDirV3)
 	fsV3 := http.StripPrefix("/", http.FileServer(http.Dir(uiStaticDirV3)))
-
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		// Check if the file exists
 		f, err := os.Stat(uiStaticDirV3 + r.URL.Path)
 		if os.IsNotExist(err) || f.IsDir() {
 			// If file doesn't exist (or is a dir), serve index.html for SPA routing
@@ -153,7 +138,6 @@ func doMain(ctx context.Context) error {
 
 	// --- Start Server ---
 	httpServer := &http.Server{Addr: addr, Handler: r}
-
 	go func() {
 		log.Printf("[INFO] HTTP server starting at %v", addr)
 		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
@@ -168,7 +152,6 @@ func doMain(ctx context.Context) error {
 	log.Println("[INFO] HTTP server shutting down...")
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
-
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("[ERROR] HTTP server graceful shutdown failed: %v", err)
 	}
@@ -183,7 +166,6 @@ func doMain(ctx context.Context) error {
 
 // --- HTTP Response Helpers ---
 
-// respondWithError sends a JSON error message
 func respondWithError(w http.ResponseWriter, message string, code int) {
 	log.Printf("[ERROR] API Error: %s", message)
 	w.Header().Set("Content-Type", "application/json")
@@ -194,7 +176,6 @@ func respondWithError(w http.ResponseWriter, message string, code int) {
 	})
 }
 
-// respondWithJSON sends a JSON data response
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -205,11 +186,10 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	}
 }
 
-// --- Preflight, Gateway, and Shutdown functions ---
-// (Ported from your main.go, replacing 'logger' with 'log')
+// --- Preflight, Gateway, and Shutdown Functions ---
 
+// runPreflightChecks (V4: Removed tcconfig checks)
 func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool) {
-	// Helper function to check if a binary exists and is executable.
 	checkBinary := func(name string, args ...string) (string, error) {
 		cmd := exec.CommandContext(ctx, name, args...)
 		out, err := cmd.CombinedOutput()
@@ -239,19 +219,7 @@ func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool)
 		}
 		checks = append(checks, check)
 	}
-	// === Check 2: tcpdump ===
-	{
-		check := &PreflightCheck{Name: "tcpdump", Required: true}
-		if version, err := checkBinary("tcpdump", "--version"); err != nil {
-			check.Status = false
-			check.Message = "Binary 'tcpdump' not found. (Install with 'apt-get install tcpdump')"
-		} else {
-			check.Status = true
-			check.Message = fmt.Sprintf("OK (%s)", version)
-		}
-		checks = append(checks, check)
-	}
-	// === Check 3: tc (iproute2) ===
+	// === Check 2: tc (iproute2) ===
 	{
 		check := &PreflightCheck{Name: "tc (iproute2)", Required: true}
 		if version, err := checkBinary("tc", "-V"); err != nil {
@@ -263,43 +231,19 @@ func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool)
 		}
 		checks = append(checks, check)
 	}
-	// === Check 4: tcset (tcconfig) ===
+	// === Check 3: ip (iproute2) ===
 	{
-		check := &PreflightCheck{Name: "tcset (tcconfig)", Required: true}
-		if version, err := checkBinary("tcset", "--version"); err != nil {
+		check := &PreflightCheck{Name: "ip (iproute2)", Required: true}
+		if version, err := checkBinary("ip", "-V"); err != nil {
 			check.Status = false
-			check.Message = "Binary 'tcset' not found. (Install with 'pip install tcconfig')"
+			check.Message = "Binary 'ip' not found. (Install with 'apt-get install iproute2')"
 		} else {
 			check.Status = true
 			check.Message = fmt.Sprintf("OK (%s)", version)
 		}
 		checks = append(checks, check)
 	}
-	// === Check 5: tcdel (tcconfig) ===
-	{
-		check := &PreflightCheck{Name: "tcdel (tcconfig)", Required: true}
-		if version, err := checkBinary("tcdel", "--version"); err != nil {
-			check.Status = false
-			check.Message = "Binary 'tcdel' not found. (Install with 'pip install tcconfig')"
-		} else {
-			check.Status = true
-			check.Message = fmt.Sprintf("OK (%s)", version)
-		}
-		checks = append(checks, check)
-	}
-	// === Check 6: tcshow (tcconfig) ===
-	{
-		check := &PreflightCheck{Name: "tcshow (tcconfig)", Required: true}
-		if version, err := checkBinary("tcshow", "--version"); err != nil {
-			check.Status = false
-			check.Message = "Binary 'tcshow' not found. (Install with 'pip install tcconfig')"
-		} else {
-			check.Status = true
-			check.Message = fmt.Sprintf("OK (%s)", version)
-		}
-		checks = append(checks, check)
-	}
-	// === Check 7: Kernel Module 'ifb' ===
+	// === Check 4: Kernel Module 'ifb' ===
 	{
 		check := &PreflightCheck{Name: "Kernel Module 'ifb'", Required: false}
 		cmd := exec.CommandContext(ctx, "grep", "^ifb", "/proc/modules")
@@ -313,26 +257,26 @@ func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool)
 		}
 		checks = append(checks, check)
 	}
-	// === Check 8: Kernel Module 'sch_htb' ===
+	// === Check 5: Kernel Module 'sch_htb' ===
 	{
 		check := &PreflightCheck{Name: "Kernel Module 'sch_htb'", Required: true}
 		cmd := exec.CommandContext(ctx, "grep", "^sch_htb", "/proc/modules")
 		if err := cmd.Run(); err != nil {
 			check.Status = false
-			check.Message = "Module 'sch_htb' not loaded. This is *required* for rate limiting (bandwidth)."
+			check.Message = "Module 'sch_htb' not loaded. This is *required*."
 		} else {
 			check.Status = true
 			check.Message = "OK (Module 'sch_htb' is loaded)"
 		}
 		checks = append(checks, check)
 	}
-	// === Check 9: Kernel Module 'sch_netem' ===
+	// === Check 6: Kernel Module 'sch_netem' ===
 	{
 		check := &PreflightCheck{Name: "Kernel Module 'sch_netem'", Required: true}
 		cmd := exec.CommandContext(ctx, "grep", "^sch_netem", "/proc/modules")
 		if err := cmd.Run(); err != nil {
 			check.Status = false
-			check.Message = "Module 'sch_netem' not loaded. This is *required* for delay and loss."
+			check.Message = "Module 'sch_netem' not loaded. This is *required*."
 		} else {
 			check.Status = true
 			check.Message = "OK (Module 'sch_netem' is loaded)"
@@ -340,7 +284,6 @@ func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool)
 		checks = append(checks, check)
 	}
 
-	// Evaluate the final result
 	ok = true
 	for _, check := range checks {
 		if check.Required && !check.Status {
@@ -350,7 +293,7 @@ func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool)
 	return checks, ok
 }
 
-// runGatewayCommand is a helper to execute system commands for Gateway Mode
+// runGatewayCommand (Helper function, no changes)
 func runGatewayCommand(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	log.Printf("[INFO] GATEWAY_MODE: Running command: %s", cmd.String())
@@ -364,16 +307,14 @@ func runGatewayCommand(ctx context.Context, name string, args ...string) error {
 	return nil
 }
 
-// enableGatewayMode configures the host (via --net=host) to act as a router/gateway
+// enableGatewayMode (Helper function, no changes)
 func enableGatewayMode(ctx context.Context) error {
 	log.Println("[INFO] GATEWAY_MODE: Enabling Default Gateway Mode...")
 
-	// --- Step 1: Enable IP Forwarding ---
 	if err := runGatewayCommand(ctx, "sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
 		return fmt.Errorf("failed to set net.ipv4.ip_forward: %w", err)
 	}
 
-	// --- Step 2: Detect WAN (default) Interface ---
 	cmd := exec.CommandContext(ctx, "ip", "route", "show", "default")
 	output, err := cmd.Output()
 	if err != nil {
@@ -403,7 +344,6 @@ func enableGatewayMode(ctx context.Context) error {
 	}
 	log.Printf("[INFO] GATEWAY_MODE: Detected WAN interface: %s", wanIface)
 
-	// --- Step 3: Apply Permissive iptables Rules ---
 	if err := runGatewayCommand(ctx, "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", wanIface, "-j", "MASQUERADE"); err != nil {
 		return fmt.Errorf("failed to apply NAT/MASQUERADE rule: %w", err)
 	}
@@ -414,7 +354,6 @@ func enableGatewayMode(ctx context.Context) error {
 		return fmt.Errorf("failed to apply FORWARD (state) rule: %w", err)
 	}
 
-	// --- Step 4: (Opt-in) Reconfigure Host Firewall ---
 	if os.Getenv("RECONFIGURE_FIREWALL") == "true" {
 		log.Println("[INFO] GATEWAY_MODE: RECONFIGURE_FIREWALL=true detected.")
 		if _, err := exec.LookPath("ufw"); err == nil {
@@ -437,42 +376,14 @@ func enableGatewayMode(ctx context.Context) error {
 
 // --- Graceful Shutdown Functions ---
 
-// setupGracefulShutdown listens for OS signals and initiates a cleanup.
+// setupGracefulShutdown (No logic change)
 func setupGracefulShutdown(cancel context.CancelFunc) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		// Wait for a signal
 		sig := <-sigChan
 		log.Printf("[WARN] Received signal: %v. Starting graceful shutdown...", sig)
-
-		// Cancel the main context to stop the HTTP server
 		cancel()
 	}()
-}
-
-// cleanupAllInterfaces runs 'tcdel --all' on every active interface.
-func cleanupAllInterfaces(ctx context.Context) {
-	if isDarwin {
-		return // No TC on Darwin
-	}
-
-	log.Println("[INFO] Cleaning up all TC rules from all interfaces...")
-
-	ifaces, err := queryIPNetInterfaces(nil)
-	if err != nil {
-		log.Printf("[ERROR] Cleanup failed: Could not query interfaces: %v", err)
-		return
-	}
-
-	for _, iface := range ifaces {
-		log.Printf("[INFO] Cleaning up interface: %s", iface.Name)
-		args := []string{"--all", iface.Name}
-		if b, err := exec.CommandContext(ctx, "tcdel", args...).CombinedOutput(); err != nil {
-			// Log error but continue
-			log.Printf("[ERROR] Cleanup failed for %s: %v, %s", iface.Name, err, string(b))
-		}
-	}
-	log.Println("[INFO] TC cleanup finished.")
 }

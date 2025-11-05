@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -14,8 +13,7 @@ import (
 	"time"
 )
 
-// --- Structs (from tc.go) ---
-
+// --- Structs (Ported from tc.go) ---
 type TcTime time.Time
 
 func (v TcTime) MarshalJSON() ([]byte, error) {
@@ -44,22 +42,53 @@ func (v *TcInterface) String() string {
 	return fmt.Sprintf("name=%v, ipv4=%v, ipv6=%v", v.Name, v.IPv4.String(), v.IPv6.String())
 }
 
-// --- Handler: /init ---
+// --- Command Helpers ---
+// runCommand is a generic helper to execute commands
+func runCommand(ctx context.Context, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	log.Printf("[INFO] V4: Executing: %s", cmd.String())
 
+	if b, err := cmd.CombinedOutput(); err != nil {
+		errStr := string(b)
+		if errStr == "" {
+			errStr = err.Error()
+		}
+		// Don't return error for "RTNETLINK answers: No such file or directory"
+		// which happens when trying to delete a non-existent qdisc (normal cleanup)
+		if strings.Contains(errStr, "No such file or directory") {
+			log.Printf("[DEBUG] V4: Command %s (cleanup): %s", cmd.String(), errStr)
+			return nil
+		}
+		log.Printf("[ERROR] V4: Command %s failed: %s", cmd.String(), errStr)
+		return fmt.Errorf("%s %v: %s", name, args, errStr)
+	}
+	return nil
+}
+
+// runTC is a specific helper for 'tc'
+func runTC(ctx context.Context, args ...string) error {
+	return runCommand(ctx, "tc", args...)
+}
+
+// runIP is a specific helper for 'ip'
+func runIP(ctx context.Context, args ...string) error {
+	return runCommand(ctx, "ip", args...)
+}
+
+// --- Handler: /init ---
+// (Ported from previous handlers.go, no logic changes)
 func handleTcInit(w http.ResponseWriter, r *http.Request) {
 	ifaces, err := queryIPNetInterfaces(nil)
 	if err != nil {
 		respondWithError(w, fmt.Sprintf("failed to query interfaces: %v", err), 500)
 		return
 	}
-
 	if len(ifaces) == 0 {
 		msg := "No active (non-loopback, up) network interfaces with valid IPs found."
 		log.Printf("[ERROR] %s", msg)
 		respondWithError(w, msg, 500)
 		return
 	}
-
 	response := struct {
 		Ifaces []*TcInterface `json:"ifaces,omitempty"`
 	}{
@@ -68,218 +97,305 @@ func handleTcInit(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, response)
 }
 
-// --- Handler: /setup ---
-
-type V2NetworkOptions struct {
-	Iface         string
-	Direction     string
-	Protocol      string
-	IdentifyKey   string
-	IdentifyValue string
-	Delay         string
-	Jitter        string
-	DelayDistro   string
-	Loss          string
-	Duplicate     string
-	Reorder       string
-	Corrupt       string
-	Rate          string
-	PacketLimit   string
-	ApiPort       string
-}
-
-func handleTcSetupV2(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	q := r.URL.Query()
-	opts := &V2NetworkOptions{
-		Iface:         q.Get("iface"),
-		Direction:     q.Get("direction"),
-		Protocol:      q.Get("protocol"),
-		IdentifyKey:   q.Get("identifyKey"),
-		IdentifyValue: q.Get("identifyValue"),
-		Delay:         q.Get("delay"),
-		Jitter:        q.Get("jitter"),
-		DelayDistro:   q.Get("delayDistro"),
-		Loss:          q.Get("loss"),
-		Duplicate:     q.Get("duplicate"),
-		Reorder:       q.Get("reorder"),
-		Corrupt:       q.Get("corrupt"),
-		Rate:          q.Get("rate"),
-		PacketLimit:   q.Get("packetLimit"),
-		ApiPort:       strings.Trim(os.Getenv("API_LISTEN"), ":"),
-	}
-
-	if err := opts.Execute(ctx); err != nil {
-		// O 'Execute' agora retorna um erro detalhado do tcset
-		respondWithError(w, err.Error(), 500)
-		return
-	}
-
-	log.Printf("[INFO] V2: Successfully applied rules to %v", opts.Iface)
-	respondWithJSON(w, http.StatusOK, nil)
-}
-
-func (v *V2NetworkOptions) Execute(ctx context.Context) error {
-	if v.Iface == "" {
-		return fmt.Errorf("V2: 'iface' is required")
-	}
-	if v.Direction == "" {
-		return fmt.Errorf("V2: 'direction' is required")
-	}
-	if isDarwin {
-		log.Println("[INFO] V2: Darwin: Ignoring network setup")
-		return nil
-	}
-
-	args := []string{
-		"--overwrite",
-		"--shaping-algo", "htb",
-	}
-
-	// 1. Configure Direction, API Exclusion, and Filtering
-	switch v.Direction {
-	case "outgoing":
-		args = append(args, "--direction", "outgoing", "--exclude-src-port", v.ApiPort)
-		if v.IdentifyKey != "all" && v.IdentifyValue != "" {
-			switch v.IdentifyKey {
-			case "serverPort":
-				args = append(args, "--src-port", v.IdentifyValue)
-			case "clientIp":
-				args = append(args, "--dst-network", v.IdentifyValue)
-			case "clientPort":
-				args = append(args, "--dst-port", v.IdentifyValue)
-			}
-		}
-	case "incoming":
-		if !hasIFB {
-			return fmt.Errorf("V2: 'ifb' module not loaded. 'incoming' rules will fail")
-		}
-		args = append(args, "--direction", "incoming", "--exclude-dst-port", v.ApiPort)
-		if v.IdentifyKey != "all" && v.IdentifyValue != "" {
-			switch v.IdentifyKey {
-			case "serverPort":
-				args = append(args, "--dst-port", v.IdentifyValue)
-			case "clientIp":
-				args = append(args, "--src-network", v.IdentifyValue)
-			case "clientPort":
-				args = append(args, "--src-port", v.IdentifyValue)
-			}
-		}
-	default:
-		log.Printf("[WARN] V2: Unknown direction '%s'", v.Direction)
-	}
-
-	// 2. Build Netem Arguments (Using corrected flags from previous step)
-	hasNetemRules := false
-	if v.Delay != "" {
-		hasNetemRules = true
-		args = append(args, "--delay", fmt.Sprintf("%vms", v.Delay))
-
-		// Jitter é aplicado via --delay-distro
-		if v.Jitter != "" {
-			args = append(args, "--delay-distro", fmt.Sprintf("%vms", v.Jitter))
-		}
-		// Distribution (normal, pareto) só é aplicada se Jitter NÃO for
-		if v.Jitter == "" && v.DelayDistro != "" {
-			args = append(args, "--delay-distribution", v.DelayDistro)
-		}
-		// Regras dependentes (precisam de --delay)
-		if v.Duplicate != "" {
-			args = append(args, "--duplicate", fmt.Sprintf("%v%%", v.Duplicate))
-		}
-		if v.Corrupt != "" {
-			args = append(args, "--corrupt", fmt.Sprintf("%v%%", v.Corrupt))
-		}
-		if v.Reorder != "" {
-			args = append(args, "--reordering", fmt.Sprintf("%v%%", v.Reorder))
-		}
-	}
-	// Loss (Regra independente)
-	if v.Loss != "" {
-		hasNetemRules = true
-		args = append(args, "--loss", fmt.Sprintf("%v%%", v.Loss))
-	}
-
-	// 3. Build Rate (Bandwidth) Argument
-	if v.Rate != "" {
-		args = append(args, "--rate", fmt.Sprintf("%vkbps", v.Rate))
-	}
-
-	// 4. Build Packet Limit Argument
-	if v.PacketLimit != "" {
-		args = append(args, "--packet-limit", v.PacketLimit)
-	}
-
-	if !hasNetemRules && v.Rate == "" && v.PacketLimit == "" {
-		log.Println("[INFO] V2: No rules specified. Skipping tcset.")
-		return nil
-	}
-
-	// 5. Add the Interface
-	args = append(args, v.Iface)
-
-	// 6. Execute the Command
-	log.Printf("[INFO] V2: Executing tcset %v", strings.Join(args, " "))
-	if b, err := exec.CommandContext(ctx, "tcset", args...).CombinedOutput(); err != nil {
-		errStr := string(b)
-		if errStr == "" {
-			errStr = err.Error()
-		}
-		return fmt.Errorf("V2: tcset %v: %v", strings.Join(args, " "), errStr)
-	} else if bs := string(b); len(bs) > 0 {
-		nnErrors := strings.Count(bs, "ERROR")
-		isIngressDel := strings.Contains(bs, "ingress") && strings.Contains(bs, "qdisc del")
-		canIgnore := nnErrors == 1 && isIngressDel
-
-		if nnErrors > 0 && !canIgnore {
-			return fmt.Errorf("V2: tcset %v, %v", strings.Join(args, " "), bs)
-		}
-		log.Printf("[INFO] V2: tcset %v, error=%v, ingress=%v, ignore=%v, %v",
-			strings.Join(args, " "), nnErrors, isIngressDel, canIgnore, bs)
-	}
-	return nil
-}
-
-// --- Handler: /reset ---
-
-func handleTcResetV2(w http.ResponseWriter, r *http.Request) {
+// --- Handler: /reset (V4) ---
+// (Replaces tcdel)
+func handleTcResetV4(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	iface := r.URL.Query().Get("iface")
 	if iface == "" {
-		respondWithError(w, "V2: 'iface' is required", 400)
+		respondWithError(w, "V4: 'iface' is required", 400)
 		return
 	}
-
 	if isDarwin {
-		log.Println("[INFO] V2: Darwin: Ignoring network reset")
+		log.Println("[INFO] V4: Darwin: Ignoring network reset")
 		respondWithJSON(w, http.StatusOK, nil)
 		return
 	}
 
-	log.Printf("[INFO] V2: Resetting rules on %v", iface)
-
-	args := []string{"--all", iface}
-	if b, err := exec.CommandContext(ctx, "tcdel", args...).CombinedOutput(); err != nil {
-		respondWithError(w, fmt.Sprintf("V2: tcdel %v: %v", strings.Join(args, " "), err), 500)
+	log.Printf("[INFO] V4: Resetting native rules on %v", iface)
+	if err := cleanupSingleInterface(ctx, iface); err != nil {
+		respondWithError(w, err.Error(), 500)
 		return
-	} else if bs := string(b); len(bs) > 0 {
-		nnErrors := strings.Count(bs, "ERROR")
-		isIngressDel := strings.Contains(bs, "ingress") && strings.Contains(bs, "qdisc del")
-		canIgnore := nnErrors == 1 && isIngressDel
-
-		if nnErrors > 0 && !canIgnore {
-			respondWithError(w, fmt.Sprintf("V2: tcdel %v, %v", strings.Join(args, " "), bs), 500)
-			return
-		}
-		log.Printf("[INFO] V2: tcdel %v, error=%v, ingress=%v, ignore=%v, %v",
-			strings.Join(args, " "), nnErrors, isIngressDel, canIgnore, bs)
 	}
-
 	respondWithJSON(w, http.StatusOK, nil)
 }
 
-// --- Helper: queryIPNetInterfaces (from tc.go) ---
+// --- Handler: /setup (V4) ---
+// (Replaces tcset)
 
+type V4NetworkOptions struct {
+	Iface     string
+	Direction string
+	ApiPort   string
+	// V4 Parameters
+	Rate             string // kbit
+	Delay            string // ms
+	Jitter           string // ms
+	DelayCorrelation string // %
+	Distribution     string // normal, pareto, etc.
+	Loss             string // %
+	LossCorrelation  string // %
+	Corrupt          string // %
+	Duplicate        string // %
+	Reorder          string // %
+}
+
+func handleTcSetupV4(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := r.URL.Query()
+	opts := &V4NetworkOptions{
+		Iface:            q.Get("iface"),
+		Direction:        q.Get("direction"),
+		ApiPort:          strings.Trim(os.Getenv("API_LISTEN"), ":"),
+		Rate:             q.Get("rate"),
+		Delay:            q.Get("delay"),
+		Jitter:           q.Get("jitter"),
+		DelayCorrelation: q.Get("delayCorrelation"),
+		Distribution:     q.Get("distribution"),
+		Loss:             q.Get("loss"),
+		LossCorrelation:  q.Get("lossCorrelation"),
+		Corrupt:          q.Get("corrupt"),
+		Duplicate:        q.Get("duplicate"),
+		Reorder:          q.Get("reorder"),
+	}
+
+	if err := opts.Execute(ctx); err != nil {
+		respondWithError(w, err.Error(), 500)
+		return
+	}
+
+	log.Printf("[INFO] V4: Native rules applied successfully to %v", opts.Iface)
+	respondWithJSON(w, http.StatusOK, nil)
+}
+
+// Execute is the new native 'tc' command builder
+func (v *V4NetworkOptions) Execute(ctx context.Context) error {
+	if v.Iface == "" {
+		return fmt.Errorf("V4: 'iface' is required")
+	}
+	if v.Direction == "" {
+		return fmt.Errorf("V4: 'direction' is required")
+	}
+	if isDarwin {
+		log.Println("[INFO] V4: Darwin: Ignoring network setup")
+		return nil
+	}
+
+	// 1. Atomic Operation: Clean old rules FIRST
+	if err := cleanupSingleInterface(ctx, v.Iface); err != nil {
+		return fmt.Errorf("V4: cleanup failed before setup: %w", err)
+	}
+
+	// 2. Determine Effective Interface (ifb logic)
+	effectiveIface := v.Iface
+	apiFilterPortCmd := "sport" // Outgoing traffic (from API)
+	if v.Direction == "incoming" {
+		if !hasIFB {
+			return fmt.Errorf("V4: 'ifb' module not loaded on host. 'incoming' rules cannot be applied")
+		}
+
+		// 1. Bring up ifb0 interface
+		if err := runIP(ctx, "link", "set", "dev", "ifb0", "up"); err != nil {
+			return fmt.Errorf("V4: failed to bring up 'ifb0': %w", err)
+		}
+		// 2. Add ingress qdisc to real interface
+		if err := runTC(ctx, "qdisc", "add", "dev", v.Iface, "ingress"); err != nil {
+			return fmt.Errorf("V4: failed to add ingress qdisc on '%s': %w", v.Iface, err)
+		}
+		// 3. Add filter to mirror all inbound traffic to ifb0's output
+		if err := runTC(ctx, "filter", "add", "dev", v.Iface, "parent", "ffff:",
+			"protocol", "all", "u32", "match", "u32", "0", "0",
+			"action", "mirred", "egress", "redirect", "dev", "ifb0"); err != nil {
+			return fmt.Errorf("V4: failed to add mirred filter on '%s': %w", v.Iface, err)
+		}
+
+		effectiveIface = "ifb0"    // Rules are now applied to the egress of ifb0
+		apiFilterPortCmd = "dport" // Incoming traffic (to the API)
+	}
+
+	// 3. Build the Fixed HTB Tree
+
+	// 3a. Root Qdisc: htb, default 11 (slow traffic)
+	if err := runTC(ctx, "qdisc", "add", "dev", effectiveIface, "root", "handle", "1:", "htb", "default", "11"); err != nil {
+		return fmt.Errorf("V4: failed to add root htb qdisc: %w", err)
+	}
+
+	// 3b. "Fast" Class (API): 1:10, unlimited bandwidth
+	if err := runTC(ctx, "class", "add", "dev", effectiveIface, "parent", "1:", "classid", "1:10", "htb", "rate", "10gbit"); err != nil {
+		return fmt.Errorf("V4: failed to add 'fast' htb class: %w", err)
+	}
+
+	// 3c. "Slow" Class (Simulation): 1:11, with user's 'rate'
+	rateLimit := "10gbit" // Unlimited default if not provided
+	if v.Rate != "" {
+		rateLimit = fmt.Sprintf("%vkbit", v.Rate)
+	}
+	if err := runTC(ctx, "class", "add", "dev", effectiveIface, "parent", "1:", "classid", "1:11", "htb", "rate", rateLimit); err != nil {
+		return fmt.Errorf("V4: failed to add 'slow' htb class: %w", err)
+	}
+
+	// 4. Build and Attach 'netem' to the "Slow" Class (1:11)
+	netemArgs := []string{"qdisc", "add", "dev", effectiveIface, "parent", "1:11", "handle", "10:", "netem"}
+	hasNetemRules := false
+
+	// Delay, Jitter, Correlation, Distribution
+	if v.Delay != "" {
+		hasNetemRules = true
+		netemArgs = append(netemArgs, "delay", fmt.Sprintf("%vms", v.Delay))
+		if v.Jitter != "" {
+			netemArgs = append(netemArgs, fmt.Sprintf("%vms", v.Jitter))
+		}
+		if v.DelayCorrelation != "" {
+			netemArgs = append(netemArgs, "correlation", fmt.Sprintf("%v%%", v.DelayCorrelation))
+		}
+		if v.Distribution != "" {
+			netemArgs = append(netemArgs, "distribution", v.Distribution)
+		}
+	}
+	// Loss, Loss Correlation
+	if v.Loss != "" {
+		hasNetemRules = true
+		netemArgs = append(netemArgs, "loss", fmt.Sprintf("%v%%", v.Loss))
+		if v.LossCorrelation != "" {
+			netemArgs = append(netemArgs, "correlation", fmt.Sprintf("%v%%", v.LossCorrelation))
+		}
+	}
+	// Other Netem rules
+	if v.Corrupt != "" {
+		hasNetemRules = true
+		netemArgs = append(netemArgs, "corrupt", fmt.Sprintf("%v%%", v.Corrupt))
+	}
+	if v.Duplicate != "" {
+		hasNetemRules = true
+		netemArgs = append(netemArgs, "duplicate", fmt.Sprintf("%v%%", v.Duplicate))
+	}
+	if v.Reorder != "" {
+		hasNetemRules = true
+		netemArgs = append(netemArgs, "reorder", fmt.Sprintf("%v%%", v.Reorder))
+	}
+
+	// Only attach 'netem' if there are rules for it
+	if hasNetemRules {
+		if err := runTC(ctx, netemArgs...); err != nil {
+			return fmt.Errorf("V4: failed to add netem qdisc: %w", err)
+		}
+	}
+
+	// 5. Apply u32 Filters
+
+	// 5a. API Filter (Prio 1) -> "Fast" Class (1:10)
+	// (We use --dport or --sport depending on direction)
+	if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "parent", "1:", "prio", "1",
+		"protocol", "tcp", "u32", "match", "ip", apiFilterPortCmd, v.ApiPort, "0xffff",
+		"flowid", "1:10"); err != nil {
+		return fmt.Errorf("V4: failed to add 'fast' API filter: %w", err)
+	}
+
+	// 5b. "All Else" Filter (Prio 2) -> "Slow" Class (1:11)
+	if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "parent", "1:", "prio", "2",
+		"protocol", "all", "u32", "match", "u32", "0", "0",
+		"flowid", "1:11"); err != nil {
+		return fmt.Errorf("V4: failed to add default 'slow' filter: %w", err)
+	}
+
+	return nil
+}
+
+// --- Handler: /raw (V4) ---
+// (Ported, but now allows 'tc' and 'ip')
+func handleTcRaw(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	cmd := ""
+
+	if r.Method == "POST" {
+		defer r.Body.Close()
+		if b, err := io.ReadAll(r.Body); err != nil {
+			respondWithError(w, fmt.Sprintf("failed to read request body: %v", err), 400)
+			return
+		} else if len(b) > 0 {
+			cmd = string(b)
+		}
+	}
+	if cmd == "" {
+		cmd = r.URL.Query().Get("cmd")
+	}
+	if cmd == "" {
+		respondWithError(w, "no command provided in body or 'cmd' query param", 400)
+		return
+	}
+
+	log.Printf("[INFO] RAW: Executing raw cmd: %v", cmd)
+	args := strings.Split(cmd, " ")
+	if len(args) == 0 {
+		respondWithError(w, "empty command", 400)
+		return
+	}
+
+	// V4 Security: Whitelist 'tc' and 'ip'
+	arg0 := args[0]
+	switch arg0 {
+	case "tc", "ip":
+		// Command allowed
+	default:
+		respondWithError(w, fmt.Sprintf("invalid command: %v. Only 'tc' and 'ip' are allowed", arg0), 403)
+		return
+	}
+
+	if b, err := exec.CommandContext(ctx, arg0, args[1:]...).Output(); err != nil {
+		respondWithError(w, fmt.Sprintf("exec %v: %v", cmd, err), 500)
+		return
+	} else if len(b) == 0 {
+		log.Printf("[INFO] RAW: exec %v ok (no output)", cmd)
+		respondWithJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": ""})
+	} else {
+		log.Printf("[INFO] RAW: exec %v ok (with output)", cmd)
+		// Return as plain text, since 'tc' rarely returns JSON
+		respondWithJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": string(b)})
+	}
+}
+
+// --- Cleanup Logic (V4) ---
+
+// cleanupSingleInterface cleans a single interface (and ifb0 if incoming)
+func cleanupSingleInterface(ctx context.Context, iface string) error {
+	// Clean main interface (root and ingress)
+	if err := runTC(ctx, "qdisc", "del", "dev", iface, "root"); err != nil {
+		log.Printf("[DEBUG] V4 Cleanup: Failed to clean root of %s (likely already clean): %v", iface, err)
+	}
+	if err := runTC(ctx, "qdisc", "del", "dev", iface, "ingress"); err != nil {
+		log.Printf("[DEBUG] V4 Cleanup: Failed to clean ingress of %s (likely already clean): %v", iface, err)
+	}
+
+	// If ifb was used, clean it too
+	if hasIFB {
+		if err := runTC(ctx, "qdisc", "del", "dev", "ifb0", "root"); err != nil {
+			log.Printf("[DEBUG] V4 Cleanup: Failed to clean root of ifb0 (likely already clean): %v", err)
+		}
+	}
+	return nil
+}
+
+// cleanupAllInterfaces (V4) is called on graceful shutdown
+func cleanupAllInterfaces(ctx context.Context) {
+	if isDarwin {
+		return // No TC on Darwin
+	}
+
+	log.Println("[INFO] Cleaning up all TC rules from all interfaces...")
+
+	ifaces, err := queryIPNetInterfaces(nil)
+	if err != nil {
+		log.Printf("[ERROR] Cleanup failed: Could not query interfaces: %v", err)
+		return
+	}
+
+	for _, iface := range ifaces {
+		log.Printf("[INFO] Cleaning up interface: %s", iface.Name)
+		cleanupSingleInterface(ctx, iface.Name)
+	}
+}
+
+// queryIPNetInterfaces (Helper, ported)
 func queryIPNetInterfaces(filter func(iface *net.Interface, addr net.Addr) bool) ([]*TcInterface, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -289,28 +405,22 @@ func queryIPNetInterfaces(filter func(iface *net.Interface, addr net.Addr) bool)
 	log.Printf("[INFO] Found %d total system interfaces. Filtering...", len(ifaces))
 
 	for _, iface := range ifaces {
-		// Use a more debug-level log, as this is very verbose
-		// log.Printf("[DEBUG] Inspecting interface: %s, Flags: %v", iface.Name, iface.Flags.String())
 		if (iface.Flags & net.FlagPointToPoint) == net.FlagPointToPoint {
 			continue
 		}
 		if (iface.Flags & net.FlagUp) == 0 {
-			// log.Printf("[DEBUG] Skipping %s: Interface is down", iface.Name)
 			continue
 		}
 		if (iface.Flags & net.FlagLoopback) != 0 {
-			// log.Printf("[DEBUG] Skipping %s: Interface is loopback", iface.Name)
 			continue
 		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			return nil, fmt.Errorf("query addrs of %v: %w", iface.Name, err)
 		}
-		// log.Printf("[DEBUG]  - Found %d addresses for %s", len(addrs), iface.Name)
 
 		ti := &TcInterface{Name: iface.Name}
 		for _, addr := range addrs {
-			// log.Printf("[DEBUG]    - Inspecting addr: %v", addr.String())
 			if filter != nil {
 				if ok := filter(&iface, addr); !ok {
 					continue
@@ -329,75 +439,7 @@ func queryIPNetInterfaces(filter func(iface *net.Interface, addr net.Addr) bool)
 		if ti.IPv4 != nil || ti.IPv6 != nil {
 			targets = append(targets, ti)
 			log.Printf("[INFO]  - SUCCESS: Added %s to list", iface.Name)
-		} else {
-			// log.Printf("[DEBUG]  - FAILED: No valid IPv4/IPv6 found for %s, skipping", iface.Name)
 		}
 	}
 	return targets, nil
-}
-
-// --- NEW: Handler: /raw (Ported from V1) ---
-
-func handleTcRaw(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	cmd := ""
-
-	// Read from POST body first
-	if r.Method == "POST" {
-		defer r.Body.Close()
-		if b, err := io.ReadAll(r.Body); err != nil {
-			respondWithError(w, fmt.Sprintf("failed to read request body: %v", err), 400)
-			return
-		} else if len(b) > 0 {
-			cmd = string(b)
-		}
-	}
-
-	// If body is empty, try GET query param
-	if cmd == "" {
-		cmd = r.URL.Query().Get("cmd")
-	}
-
-	if cmd == "" {
-		respondWithError(w, "no command provided in body or 'cmd' query param", 400)
-		return
-	}
-
-	log.Printf("[INFO] RAW: Executing raw cmd: %v", cmd)
-
-	args := strings.Split(cmd, " ")
-	if len(args) == 0 {
-		respondWithError(w, "empty command", 400)
-		return
-	}
-
-	// Security: Whitelist allowed commands
-	arg0 := args[0]
-	switch arg0 {
-	case "tcset", "tcshow", "tcdel":
-		// Command is allowed
-	default:
-		respondWithError(w, fmt.Sprintf("invalid command: %v. Only 'tcset', 'tcshow', 'tcdel' are allowed", arg0), 403)
-		return
-	}
-
-	if b, err := exec.CommandContext(ctx, arg0, args[1:]...).Output(); err != nil {
-		respondWithError(w, fmt.Sprintf("exec %v: %v", cmd, err), 500)
-		return
-	} else if len(b) == 0 {
-		log.Printf("[INFO] RAW: exec %v ok (no output)", cmd)
-		respondWithJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": ""})
-	} else {
-		log.Printf("[INFO] RAW: exec %v ok (with output)", cmd)
-
-		// Try to unmarshal as JSON (tcshow does this)
-		var res interface{}
-		if err := json.Unmarshal(b, &res); err != nil {
-			// If not JSON, return as plain text
-			respondWithJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": string(b)})
-		} else {
-			// If JSON, return the JSON object
-			respondWithJSON(w, http.StatusOK, res)
-		}
-	}
 }

@@ -1,7 +1,7 @@
 {
-  "name": "frontend-v3",
-  "version": "3.0.0",
-  "description": "Advanced static frontend for tc-ui V3",
+  "name": "frontend-v4",
+  "version": "4.0.0",
+  "description": "Advanced static frontend for TC V4",
   "scripts": {
     "build:css": "tailwindcss -i ./input.css -o ./production.css --minify"
   },

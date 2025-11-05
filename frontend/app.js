@@ -2,7 +2,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // API Version
-    const API_VERSION = 'v2'; // Path still uses v2
+    const API_VERSION = 'v2'; // The route path is still /v2/
     
     // DOM References
     const loadingEl = document.getElementById('loading-interfaces');
@@ -41,8 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Helper function for making API calls
-     * @param {string} endpoint - The API endpoint to call
+     * Helper for making API calls
+     * @param {string} endpoint - The API endpoint
      * @param {string} successMessage - Message to log on success
      */
     async function apiRequest(endpoint, successMessage) {
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const responseText = await response.text(); // Read text first
 
             if (!response.ok) {
-                // Try to parse error from V3 JSON, fallback to text
+                // Try to parse error from V4 JSON, fallback to text
                 try {
                     const errJson = JSON.parse(responseText);
                     throw new Error(`API Error: ${errJson.message || 'Unknown error'}`);
@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             logMessage(successMessage, 'success');
-            return responseText; // Can be JSON or empty string
+            return responseText;
 
         } catch (err) {
             logMessage(err.message, 'error');
@@ -76,7 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchInterfaces() {
         logMessage(`Fetching network interfaces from API (/${API_VERSION}/config/init)...`);
         try {
-            // Correct, standardized path
             const response = await fetch(`/tc/api/${API_VERSION}/config/init`);
 
             if (!response.ok) {
@@ -88,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.ifaces && data.ifaces.length > 0) {
                 logMessage(`Successfully fetched ${data.ifaces.length} interfaces.`, 'success');
-                loadingEl.style.display = 'none'; // Hide the loading spinner
+                loadingEl.style.display = 'none';
                 renderInterfaces(data.ifaces);
             } else {
                 throw new Error('No network interfaces (ifaces) found in API response.');
@@ -116,10 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p class="text-sm text-gray-300">IPv4: ${iface.ipv4 || 'N/A'}</p>
                 <p class="text-sm text-gray-300">IPv6: ${iface.ipv6 || 'N/A'}</p>
             `;
-            
-            // Add the click event listener
             card.addEventListener('click', () => selectInterface(iface, card));
-            
             interfacesListEl.appendChild(card);
         });
     }
@@ -133,24 +129,21 @@ document.addEventListener('DOMContentLoaded', () => {
         logMessage(`Selected interface: ${iface.name}`);
         selectedInterface = iface;
 
-        // Remove selection from other cards
         document.querySelectorAll('#interfaces-list > div').forEach(card => {
             card.classList.remove('bg-blue-700', 'ring-2', 'ring-blue-300');
             card.classList.add('bg-gray-700');
         });
 
-        // Highlight the selected card
         selectedCard.classList.add('bg-blue-700', 'ring-2', 'ring-blue-300');
         selectedCard.classList.remove('bg-gray-700');
 
-        // Show the configuration form
         selectedIfaceNameEl.textContent = iface.name;
         configFormSection.style.display = 'block';
     }
 
     /**
-      * Shows or hides the IFB warning based on direction
-      */
+     * Shows or hides the IFB warning
+     */
     directionSelect.addEventListener('change', (e) => {
         if (e.target.value === 'incoming') {
             ifbWarning.style.display = 'block';
@@ -161,10 +154,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     /**
-     * Handles the form submission to apply V3 TC rules
+     * Handles the form submission to apply rules
      */
     configForm.addEventListener('submit', async (e) => {
-        e.preventDefault(); // Prevent default form POST
+        e.preventDefault();
         
         if (!selectedInterface) {
             logMessage('Error: No interface selected.', 'error');
@@ -174,18 +167,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData(configForm);
         const params = new URLSearchParams();
 
-        // 1. Add required parameters
+        // 1. Required Parameters
         params.append('iface', selectedInterface.name);
         params.append('direction', formData.get('direction'));
         
-        // 2. Set simplified defaults
-        params.append('protocol', 'all');
-        params.append('identifyKey', 'all');
-        params.append('identifyValue', 'all');
-
-        // 3. Add all other fields *only if they have a value*
+        // 2. Add all other fields *only if they have a value*
+        // V4: Added new correlation and distribution fields
         const fields = [
-            'rate', 'packetLimit', 'delay', 'jitter', 'delayDistro',
+            'rate', 'delay', 'jitter', 'delayCorrelation', 'distribution',
             'loss', 'lossCorrelation', 'corrupt', 'duplicate', 'reorder'
         ];
         
@@ -196,22 +185,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // 4. Build and call the V3 setup endpoint (which is /v2/ path)
+        // 4. Builds and calls the setup endpoint
         const endpoint = `/tc/api/${API_VERSION}/config/setup?${params.toString()}`;
         
         try {
             await apiRequest(
                 endpoint,
-                `Successfully applied V3 rules to ${selectedInterface.name}.`
+                `Successfully applied V4 (native) rules to ${selectedInterface.name}.`
             );
         } catch (err) {
-            // Error is already logged by apiRequest
-            logMessage(`Failed to apply V3 rules.`, 'error');
+            logMessage(`Failed to apply V4 rules.`, 'error');
         }
     });
 
     /**
-     * Handles resetting all TC rules on the selected interface
+     * Handles resetting all rules
      */
     resetButton.addEventListener('click', async () => {
         if (!selectedInterface) {
@@ -227,12 +215,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 endpoint,
                 `Successfully reset all rules on ${selectedInterface.name}.`
             );
-            // Clear the form fields after a successful reset
             configForm.reset();
             ifbWarning.style.display = 'none';
-
         } catch (err) {
-            // Error is already logged by apiRequest
             logMessage(`Failed to reset rules.`, 'error');
         }
     });

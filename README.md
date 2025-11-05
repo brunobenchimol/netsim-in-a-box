@@ -181,9 +181,7 @@ When `RECONFIGURE_FIREWALL=true` is set, the container will detect if `ufw` is i
 
 * **WSL2 Not Supported:** This tool is not supported on WSL2. WSL2 uses kernel that does not have networking shaping modules (NETEM) installed that is directly needed by `tc`. Use a dedicated Linux VM (e.g., in VirtualBox, VMWare) or a bare-metal Linux host.
 
-* **Rootless Docker:** This will not work with rootless Docker, as it requires elevated NET_ADMIN capabilities on the host's network stack and **uid 0** for `tc`, `iptables` and `tcpdump`.
+* **Rootless Docker:** This will not work with rootless Docker, as it requires elevated NET_ADMIN capabilities on the host's network stack and **uid 0** for `tc` and `iptables`.
 
 ## 7. TODO
 
-1. Remove `tcconfig` 
-2. Remove `go-oryx-lib` 
