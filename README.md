@@ -183,5 +183,65 @@ When `RECONFIGURE_FIREWALL=true` is set, the container will detect if `ufw` is i
 
 * **Rootless Docker:** This will not work with rootless Docker, as it requires elevated NET_ADMIN capabilities on the host's network stack and **uid 0** for `tc` and `iptables`.
 
-## 7. TODO
+## 7. Bonus Tool: iperf3 Server
+
+This container also runs an `iperf3` server as a daemon, managed by `supervisord`. This helps you test bandwidth shaping without needing to run a separate server.
+
+* **iperf3 Port:** `5202` (Note: *not* the default 5201)
+
+### How to Test (Example)
+
+1.  Apply an **INCOMING** rule of **10mbit** on your VM's interface.
+2.  From *another physical host* (not the container host or same physical computer), run:
+    ```bash
+    iperf3 -c <netsim_vm_ip> -p 5202
+    ```
+3.  The client will report a throughput of ~10 Mbits/s.
+
+## 8. Advanced: Raw Command Execution
+
+NetSim-in-a-Box v4 includes a "raw" API endpoint for advanced users who need to inspect or manually modify the `tc` or `ip` settings.
+
+This endpoint is a direct, unfiltered passthrough to the host's `tc` and `ip` binaries.
+
+**Endpoint:** `/tc/api/v2/config/raw`
+**Methods:** `POST`, `GET`
+
+### ⚠️ Security Warning
+
+This endpoint is powerful. It is **strictly limited** to only execute commands that begin with `tc` or `ip`. All other commands (like `ls`, `rm`, `cat`, etc.) will be rejected with a `403 Forbidden` error.
+
+---
+
+### Usage with `POST` (Recommended)
+
+You can send the command as plain text in the request body.
+
+**Example: Get `tc` qdisc status for `ens33`**
+```bash
+# Note: The command is in the request body
+curl -X POST --data "qdisc show dev ens33" http://localhost:2023/tc/api/v2/config/raw
+
+# Example Success Output:
+# {
+#   "status": "ok",
+#   "output": "qdisc htb 1: root refcnt 2 r2q 10 default 11 direct_qlen 1000\nqdisc netem 10: parent 1:11 limit 1000 delay 500ms\n"
+# }
+```
+
+### Usage with `GET`
+
+**Example: Get `ip` address for `ens33`**
+```bash
+# The command is "ip addr show dev ens33"
+curl -G http://localhost:2023/tc/api/v2/config/raw --data-urlencode "cmd=ip addr show dev ens33"
+
+# Example Success Output:
+# {
+#   "status": "ok",
+#   "output": "2: ens33: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc htb state UP group default qlen 1000\n    link/ether 00:0c:29:12:34:56 brd ff:ff:ff:ff:ff:ff\n    inet 192.168.0.187/24 brd 192.168.0.255 scope global dynamic noprefixroute ens33\n       valid_lft 2814sec preferred_lft 2814sec\n    inet6 fe80::20c:29ff:fe12:3456/64 scope link noprefixroute \n       valid_lft forever preferred_lft forever\n"
+# }
+```
+
+## 9. TODO
 

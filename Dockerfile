@@ -43,6 +43,7 @@ RUN apt update && apt install -y --no-install-recommends \
     ufw \
     kmod \
     ca-certificates \
+    iperf3 \
     squid \
     supervisor \
     && \
@@ -68,9 +69,10 @@ COPY supervisord/supervisord.conf /etc/supervisord.conf
 
 # Expose the API port
 EXPOSE 2023
-
 # Expose the Squid proxy port
 EXPOSE 3128
+# Expose iperf3 port
+EXPOSE 5202
 
 # Run supervisord as the main command
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

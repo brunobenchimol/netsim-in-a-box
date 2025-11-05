@@ -31,7 +31,7 @@ type PreflightCheck struct {
 var isDarwin bool
 var hasIFB bool
 
-const version = "4.2.1" // V4: Pure Go TC
+const version = "4.3.0" // V4: Pure Go TC
 const apiVersion = "v2" // The API path we are serving
 
 func init() {
@@ -415,12 +415,14 @@ func enableGatewayMode(ctx context.Context) error {
 // logStartupInfo prints the welcome message with access ports and IPs.
 func logStartupInfo(apiPort string, ifaces []*TcInterface) {
 	squidPort := "3128" // This is static from our Dockerfile
+	iperfPort := "5202" // This is static from supervisord.conf
 
 	log.Println("----------------------------------------------------------")
 	log.Printf("[INFO] NetSim-in-a-Box is READY (v%s)", version)
 	log.Println("[INFO] Access Points:")
 	log.Printf("[INFO]   - Web UI (API Port):   http://localhost:%s", apiPort)
 	log.Printf("[INFO]   - HTTP Proxy (Squid):  http://localhost:%s", squidPort)
+	log.Printf("[INFO]   - iperf3 Server:       port %s (e.g., 'iperf3 -c <ip> -p %s')", iperfPort, iperfPort)
 	log.Println("[INFO] ")
 	log.Println("[INFO] Available Host IPs (use with the ports above):")
 	log.Printf("[INFO]   - localhost / 127.0.0.1 (via port %s or %s)", apiPort, squidPort)
