@@ -31,7 +31,7 @@ type PreflightCheck struct {
 var isDarwin bool
 var hasIFB bool // V4: This is now vital
 
-const version = "4.0.0" // V4: Pure Go TC
+const version = "4.1.0" // V4: Pure Go TC
 const apiVersion = "v2" // The API path we are serving
 
 func init() {
@@ -102,6 +102,17 @@ func doMain(ctx context.Context) error {
 	if !strings.Contains(addr, ":") {
 		addr = fmt.Sprintf(":%v", addr)
 	}
+
+	// --- Startup Log ---
+	apiPort := strings.TrimPrefix(addr, ":")
+	// Query interfaces *before* logging startup, so we can show IPs
+	ifacesForLog, err := queryIPNetInterfaces(nil)
+	if err != nil {
+		// Log a warning, but don't fail startup just for this
+		log.Printf("[WARN] Could not query host interfaces for startup message: %v", err)
+	}
+	// Log the startup message
+	logStartupInfo(apiPort, ifacesForLog)
 
 	// --- Chi Router Setup ---
 	r := chi.NewRouter()
@@ -399,6 +410,32 @@ func enableGatewayMode(ctx context.Context) error {
 
 	log.Println("[INFO] GATEWAY_MODE: Successfully enabled. Host is now a gateway.")
 	return nil
+}
+
+// logStartupInfo prints the welcome message with access ports and IPs.
+func logStartupInfo(apiPort string, ifaces []*TcInterface) {
+	squidPort := "3128" // This is static from our Dockerfile
+
+	log.Println("----------------------------------------------------------")
+	log.Printf("[INFO] NetSim-in-a-Box is READY (v%s)", version)
+	log.Println("[INFO] Access Points:")
+	log.Printf("[INFO]   - Web UI (API Port):   http://localhost:%s", apiPort)
+	log.Printf("[INFO]   - HTTP Proxy (Squid):  http://localhost:%s", squidPort)
+	log.Println("[INFO] ")
+	log.Println("[INFO] Available Host IPs (use with the ports above):")
+	log.Printf("[INFO]   - localhost / 127.0.0.1 (via port %s or %s)", apiPort, squidPort)
+
+	if len(ifaces) > 0 {
+		for _, iface := range ifaces {
+			if iface.IPv4 != nil {
+				// Log other IPs, making it clear they use the same ports
+				log.Printf("[INFO]   - http://%s:%s (Interface: %s)", iface.IPv4.String(), apiPort, iface.Name)
+			}
+		}
+	} else {
+		log.Println("[INFO]   - (No other non-loopback IPs found)")
+	}
+	log.Println("----------------------------------------------------------")
 }
 
 // --- Graceful Shutdown Functions ---

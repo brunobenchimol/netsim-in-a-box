@@ -58,7 +58,8 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 		if strings.Contains(errStr, "No such file or directory") ||
 			strings.Contains(errStr, "Cannot find specified qdisc") ||
 			strings.Contains(errStr, "Cannot find device") ||
-			strings.Contains(errStr, "Cannot delete qdisc with handle of zero") {
+			strings.Contains(errStr, "Cannot delete qdisc with handle of zero") ||
+			strings.Contains(errStr, "Invalid handle") {
 			return nil
 		}
 
@@ -131,35 +132,41 @@ type V4NetworkOptions struct {
 	Direction string
 	ApiPort   string
 	// V4 Parameters
-	Rate             string // kbit
-	Delay            string // ms
-	Jitter           string // ms
-	DelayCorrelation string // %
-	Distribution     string // normal, pareto, etc.
-	Loss             string // %
-	LossCorrelation  string // %
-	Corrupt          string // %
-	Duplicate        string // %
-	Reorder          string // %
+	Rate                 string // kbit
+	Delay                string // ms
+	Jitter               string // ms
+	DelayCorrelation     string // %
+	Distribution         string // normal, pareto, etc.
+	Loss                 string // %
+	LossCorrelation      string // %
+	Corrupt              string // %
+	CorruptCorrelation   string // %
+	Duplicate            string // %
+	DuplicateCorrelation string // %
+	Reorder              string // %
+	ReorderCorrelation   string // %
 }
 
 func handleTcSetupV4(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
 	opts := &V4NetworkOptions{
-		Iface:            q.Get("iface"),
-		Direction:        q.Get("direction"),
-		ApiPort:          strings.Trim(os.Getenv("API_LISTEN"), ":"),
-		Rate:             q.Get("rate"),
-		Delay:            q.Get("delay"),
-		Jitter:           q.Get("jitter"),
-		DelayCorrelation: q.Get("delayCorrelation"),
-		Distribution:     q.Get("distribution"),
-		Loss:             q.Get("loss"),
-		LossCorrelation:  q.Get("lossCorrelation"),
-		Corrupt:          q.Get("corrupt"),
-		Duplicate:        q.Get("duplicate"),
-		Reorder:          q.Get("reorder"),
+		Iface:                q.Get("iface"),
+		Direction:            q.Get("direction"),
+		ApiPort:              strings.Trim(os.Getenv("API_LISTEN"), ":"),
+		Rate:                 q.Get("rate"),
+		Delay:                q.Get("delay"),
+		Jitter:               q.Get("jitter"),
+		DelayCorrelation:     q.Get("delayCorrelation"),
+		Distribution:         q.Get("distribution"),
+		Loss:                 q.Get("loss"),
+		LossCorrelation:      q.Get("lossCorrelation"),
+		Corrupt:              q.Get("corrupt"),
+		CorruptCorrelation:   q.Get("corruptCorrelation"),
+		Duplicate:            q.Get("duplicate"),
+		DuplicateCorrelation: q.Get("duplicateCorrelation"),
+		Reorder:              q.Get("reorder"),
+		ReorderCorrelation:   q.Get("reorderCorrelation"),
 	}
 
 	if err := opts.Execute(ctx); err != nil {
@@ -231,7 +238,7 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 	// 3c. "Slow" Class (Simulation): 1:11, with user's 'rate'
 	rateLimit := "10gbit" // Unlimited default if not provided
 	if v.Rate != "" {
-		rateLimit = fmt.Sprintf("%vkbit", v.Rate)
+		rateLimit = v.Rate
 	}
 	if err := runTC(ctx, "class", "add", "dev", effectiveIface, "parent", "1:", "classid", "1:11", "htb", "rate", rateLimit); err != nil {
 		return fmt.Errorf("V4: failed to add 'slow' htb class: %w", err)
@@ -242,7 +249,7 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 	hasNetemRules := false
 
 	// Delay, Jitter, Correlation, Distribution
-	// We now trust the UI to send valid, dependent combinations.
+	// We trust the UI to send valid, dependent combinations (e.g., no jitter-only).
 	if v.Delay != "" {
 		hasNetemRules = true
 		netemArgs = append(netemArgs, "delay", fmt.Sprintf("%vms", v.Delay))
@@ -252,7 +259,8 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 			jitterVal := v.Jitter
 			// Fix: 'distribution' requires a non-zero jitter.
 			if (jitterVal == "0") && v.Distribution != "" {
-				jitterVal = "1" // Force 1ms
+				jitterVal = "0.1" // Force 0.1ms
+				log.Printf("[INFO] V4: Forcing 0.1ms jitter (required for distribution)")
 			}
 			netemArgs = append(netemArgs, fmt.Sprintf("%vms", jitterVal))
 
@@ -266,14 +274,23 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 		if v.Distribution != "" {
 			netemArgs = append(netemArgs, "distribution", v.Distribution)
 		}
+
+		// Reorder depends on Delay, so it must be in this block
+		if v.Reorder != "" {
+			hasNetemRules = true
+			netemArgs = append(netemArgs, "reorder", fmt.Sprintf("%v%%", v.Reorder))
+			if v.ReorderCorrelation != "" {
+				netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.ReorderCorrelation))
+			}
+		}
 	}
 
 	// Loss, Loss Correlation
 	if v.Loss != "" {
 		hasNetemRules = true
-		netemArgs = append(netemArgs, "loss", fmt.Sprintf("%v%%", v.Loss))
+		netemArgs = append(netemArgs, "loss", "random", fmt.Sprintf("%v%%", v.Loss))
 		if v.LossCorrelation != "" {
-			netemArgs = append(netemArgs, "correlation", fmt.Sprintf("%v%%", v.LossCorrelation))
+			netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.LossCorrelation))
 		}
 	}
 
@@ -281,14 +298,16 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 	if v.Corrupt != "" {
 		hasNetemRules = true
 		netemArgs = append(netemArgs, "corrupt", fmt.Sprintf("%v%%", v.Corrupt))
+		if v.CorruptCorrelation != "" {
+			netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.CorruptCorrelation))
+		}
 	}
 	if v.Duplicate != "" {
 		hasNetemRules = true
 		netemArgs = append(netemArgs, "duplicate", fmt.Sprintf("%v%%", v.Duplicate))
-	}
-	if v.Reorder != "" {
-		hasNetemRules = true
-		netemArgs = append(netemArgs, "reorder", fmt.Sprintf("%v%%", v.Reorder))
+		if v.DuplicateCorrelation != "" {
+			netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.DuplicateCorrelation))
+		}
 	}
 
 	// Only attach 'netem' if there are rules for it

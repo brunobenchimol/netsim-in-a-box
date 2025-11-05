@@ -20,6 +20,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const jitterInput = document.getElementById('jitter');
     const delayCorrelationInput = document.getElementById('delayCorrelation');
     const distributionInput = document.getElementById('distribution');
+    const reorderInput = document.getElementById('reorder'); 
+    const lossInput = document.getElementById('loss');
+    const corruptInput = document.getElementById('corrupt');
+    const duplicateInput = document.getElementById('duplicate');
+    const lossCorrelationInput = document.getElementById('lossCorrelation');
+    const corruptCorrelationInput = document.getElementById('corruptCorrelation');
+    const duplicateCorrelationInput = document.getElementById('duplicateCorrelation');
+    const reorderCorrelationInput = document.getElementById('reorderCorrelation');
 
     let selectedInterface = null; // Stores the selected interface
 
@@ -46,6 +54,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Generic helper to disable a child input if its parent is empty/zero
+     * @param {HTMLElement} parentInput 
+     * @param {HTMLElement} childInput 
+     */
+    function updateDependency(parentInput, childInput) {
+        const hasParentValue = (parentInput.value !== "" && parseFloat(parentInput.value) > 0);
+        childInput.disabled = !hasParentValue;
+        if (!hasParentValue) {
+            childInput.value = "";
+        }
+    }
+
+    /**
      * Updates the disabled state of netem inputs based on dependencies
      */
     function updateInputDependencies() {
@@ -55,20 +76,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Check if delay is set
         const hasDelay = (delayVal !== "" && delayVal !== "0");
         
-        // Jitter, Correlation, and Distribution all depend on Delay
+        // Jitter, Correlation, Distribution and Reorder all depend on Delay
         jitterInput.disabled = !hasDelay;
         delayCorrelationInput.disabled = !hasDelay;
         distributionInput.disabled = !hasDelay;
+        reorderInput.disabled = !hasDelay; // Reorder parent
 
         // If Delay is gone, clear them
         if (!hasDelay) {
             jitterInput.value = "";
             delayCorrelationInput.value = "";
             distributionInput.value = ""; // Or set to default
+            reorderInput.value = "";
         }
 
         // Now, check Jitter
-        const hasJitter = (jitterInput.value !== "" && jitterInput.value !== "0");
+        const hasJitter = (jitterInput.value !== "" && parseFloat(jitterInput.value) > 0);
         
         // Delay Correlation depends on Jitter
         // (It's already disabled if delay is 0, but we add this for clarity)
@@ -78,6 +101,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (hasDelay) { // Only re-enable if parent (delay) is set
             delayCorrelationInput.disabled = false;
         }
+
+        updateDependency(lossInput, lossCorrelationInput);
+        updateDependency(corruptInput, corruptCorrelationInput);
+        updateDependency(duplicateInput, duplicateCorrelationInput);
+        updateDependency(reorderInput, reorderCorrelationInput); // Reorder child
     }
 
     /**
@@ -212,12 +240,21 @@ document.addEventListener('DOMContentLoaded', () => {
         params.append('direction', formData.get('direction'));
         
         // 2. Add all other fields *only if they have a value*
-        // V4: Added new correlation and distribution fields
         const fields = [
-            'rate', 'delay', 'jitter', 'delayCorrelation', 'distribution',
-            'loss', 'lossCorrelation', 'corrupt', 'duplicate', 'reorder'
+            'delay', 'jitter', 'delayCorrelation', 'distribution',
+            'loss', 'lossCorrelation', 
+            'corrupt', 'corruptCorrelation',
+            'duplicate', 'duplicateCorrelation',
+            'reorder', 'reorderCorrelation'
         ];
         
+        const rateVal = formData.get('rate-value');
+        const rateUnit = formData.get('rate-unit');
+        if (rateVal) {
+            // Concat value and unit, eg: "100mbit"
+            params.append('rate', rateVal + rateUnit);
+        }
+
         fields.forEach(field => {
             const value = formData.get(field);
             if (value) {
@@ -264,8 +301,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     delayInput.addEventListener('input', updateInputDependencies);
     jitterInput.addEventListener('input', updateInputDependencies);
+    lossInput.addEventListener('input', updateInputDependencies);
+    corruptInput.addEventListener('input', updateInputDependencies);
+    duplicateInput.addEventListener('input', updateInputDependencies);
+    reorderInput.addEventListener('input', updateInputDependencies);
 
     // Initialize the application
     fetchInterfaces();
     updateInputDependencies(); // Call on load to set initial state
+    
 });

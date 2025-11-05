@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NetSim-in-a-Box (V4 - Native TC)</title>
+    <title>NetSim-in-a-Box</title>
     <link href="production.css" rel="stylesheet">
     <script src="app.js" defer></script>
 </head>
@@ -14,7 +14,7 @@
         <header class="mb-8 flex justify-between items-center">
             <div>
                 <h1 class="text-4xl font-bold text-white mb-2">NetSim-in-a-Box</h1>
-                <p class="text-lg text-gray-400">Advanced Network Simulator (V4 - Native TC)</p>
+                <p class="text-lg text-gray-400">Advanced Network Simulator (Native TC+NETEM)</p>
             </div>
             <a href="/tc/api/version" target="_blank" class="text-sm text-blue-400 hover:text-blue-300">App Version</a>
         </header>
@@ -51,17 +51,31 @@
                             <div>
                                 <label for="direction" class="block text-sm font-medium text-gray-300 mb-2">Direction</label>
                                 <select id="direction" name="direction" class="form-select block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                                    <option value="outgoing">Outgoing (Egress)</option>
-                                    <option value="incoming">Incoming (Ingress)</option>
+                                    <option value="outgoing" selected>Outgoing</option>
+                                    <option value="incoming">Incoming</option>
                                 </select>
+                                <div id="ifb-warning" class="text-sm text-yellow-400 mt-2" style="display: none;">
+                                    <strong>Note:</strong> 'Incoming' rules require the 'ifb' kernel module to be loaded on the host.
+                                </div>
                             </div>
+                            
                             <div>
-                                <label for="rate" class="block text-sm font-medium text-gray-300">Bandwidth (kbit)</label>
-                                <input type="number" name="rate" id="rate" min="0" placeholder="e.g., 1000" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                <label for="rate-value" class="block text-sm font-medium text-gray-300">Bandwidth</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="rate-value" id="rate-value" min="0" placeholder="e.g., 100" class="form-input block w-2/3 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <select name="rate-unit" id="rate-unit" class="form-select block w-1/3 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                        <option value="kbit" selected>kbit</option>
+                                        <option value="mbit">mbit</option>
+                                        <option value="gbit">gbit</option>
+                                        <option value="bps">bps (Bytes/s)</option>
+                                        <option value="kbps">kbps (KB/s)</option>
+                                        <option value="mbps">mbps (MB/s)</option>
+                                        <option value="gbps">gbps (GB/s)</option>
+                                        <option value="bit">bit (bits/s)</option>
+                                    </select>
+                                </div>
                             </div>
-                        </div>
-                        <div id="ifb-warning" class="text-yellow-400 text-sm mt-4 p-2 bg-yellow-900 bg-opacity-30 rounded border border-yellow-700" style="display: none;">
-                            <strong>Warning:</strong> 'Incoming' rules require the 'ifb' kernel module on the host. If not loaded, this will fail.
+
                         </div>
                     </fieldset>
                     
@@ -94,30 +108,44 @@
                         </div>
                     </fieldset>
 
-                    <!-- Loss & Manipulation -->
+                    <!-- Packet Manipulation -->
                     <fieldset class="border border-gray-700 p-4 rounded-md">
                         <legend class="text-lg font-medium text-white px-2">Packet Manipulation</legend>
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
-                             <div>
-                                <label for="loss" class="block text-sm font-medium text-gray-300">Loss (%)</label>
-                                <input type="number" name="loss" id="loss" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                            </div>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4 mt-2">
+
                             <div>
-                                <label for="lossCorrelation" class="block text-sm font-medium text-gray-300">Correlation (%)</label>
-                                <input type="number" name="lossCorrelation" id="lossCorrelation" min="0" max="100" placeholder="e.g., 25" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                <label for="loss" class="block text-sm font-medium text-gray-300">Packet Loss (random)</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="loss" id="loss" min="0" max="100" step="0.01" placeholder="Loss (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="lossCorrelation" id="lossCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
                             </div>
-                             <div>
-                                <label for="corrupt" class="block text-sm font-medium text-gray-300">Corruption (%)</label>
-                                <input type="number" name="corrupt" id="corrupt" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
-                            </div>
+                            
                             <div>
-                                <label for="duplicate" class="block text-sm font-medium text-gray-300">Duplicate (%)</label>
-                                <input type="number" name="duplicate" id="duplicate" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                <label for="corrupt" class="block text-sm font-medium text-gray-300">Packet Corruption</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="corrupt" id="corrupt" min="0" max="100" step="0.01" placeholder="Corrupt (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="corruptCorrelation" id="corruptCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
                             </div>
-                             <div>
-                                <label for="reorder" class="block text-sm font-medium text-gray-300">Reorder (%)</label>
-                                <input type="number" name="reorder" id="reorder" min="0" max="100" step="0.01" placeholder="e.g., 0.1" class="form-input mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+
+                            <div>
+                                <label for="duplicate" class="block text-sm font-medium text-gray-300">Packet Duplication</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="duplicate" id="duplicate" min="0" max="100" step="0.01" placeholder="Duplicate (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="duplicateCorrelation" id="duplicateCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
                             </div>
+
+                            <div>
+                                <label for="reorder" class="block text-sm font-medium text-gray-300">Packet Reordering (requires Delay)</label>
+                                <div class="flex space-x-2 mt-1">
+                                    <input type="number" name="reorder" id="reorder" min="0" max="100" step="0.01" placeholder="Reorder (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="reorderCorrelation" id="reorderCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                </div>
+                            </div>
+
                         </div>
                     </fieldset>
                     
