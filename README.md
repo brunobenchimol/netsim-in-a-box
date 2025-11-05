@@ -1,17 +1,17 @@
 # NetSim-in-a-Box
 
-<p align="center">
+<p align="left">
   <a href="https://github.com/brunobenchimol/netsim-in-a-box/actions/workflows/docker-publish.yml">
     <img src="https://github.com/brunobenchimol/netsim-in-a-box/actions/workflows/docker-publish.yml/badge.svg" alt="CI/CD Status">
   </a>
   <a href="https://hub.docker.com/r/brunobenchimol/netsim-in-a-box">
-    <img src="https://img.shields.io/docker/pulls/brunobenchimol/netsim-in-a-box?style=flat&logo=docker&label=docker%20pulls" alt="Docker Pulls">
+    <img src="https://img.shields.io/docker/pulls/brunobenchimol/netsim-in-a-box" alt="Docker Pulls">
   </a>
 </p>
 
 **A self-contained, Docker-based network simulation tool for developers.**
 
-This tool provides a simple web interface (`tc-ui`) and a proxy (`squid`) in a single container. It allows development teams to easily simulate adverse network conditions (like high latency, packet loss, and bandwidth throttling) on their local machines by manipulating the host's Linux traffic control (`tc`) settings. 
+This tool provides a simple web interface (`tc-ui`), a http proxy (`squid`) and measuring network performance (`iperf3`) in a single container. It allows development teams to easily simulate adverse network conditions (like high latency, packet loss, and bandwidth throttling) on their local machines by manipulating the host's Linux traffic control (`tc`) settings. 
 
 This is a fork of the original (and now unmaintained) `ossrs/tc-ui` (https://github.com/ossrs/tc-ui), rebuilt on a modern Go backend, a new lightweight Javascript/Tailwind frontend, and packaged with Squid proxy in a secure, multi-stage Docker image.
 
@@ -21,6 +21,7 @@ This tool runs as a single, monolithic Docker container managed by `supervisord`
 
 1.  **`tc-ui` (Go App):** The backend API and web frontend, exposed on port `2023`. This service runs the `tcset`, `tcdel`, etc., commands based on your UI input.
 2.  **`squid` (Proxy):** A non-caching proxy server, exposed on port `3128`.
+3.  **`iperf3` (Server):** A network bandwidth testing server, exposed on port `5202`.
 
 To function, the container **must** run with `--net=host`. This gives the `tc-ui` process permission to see and apply `tc` rules directly to your host's real network interfaces (e.g., `ens33`, `docker0`).
 
@@ -28,7 +29,34 @@ The developer then routes their application's traffic through the `squid` proxy 
 
 ---
 
-## 1. Host Prerequisites (Important)
+## 1. Getting Started: Installation
+
+You have two options to get the Docker image.
+
+### Option 1: Pull from Docker Hub (Recommended)
+
+This is the fastest method. The image is pre-built and hosted on Docker Hub.
+
+```bash
+docker pull brunobenchimol/netsim-in-a-box:latest
+```
+
+*(After pulling, you can rename it for convenience: `docker tag brunobenchimol/netsim-in-a-box:latest netsim-in-a-box`)*
+
+### Option 2. Build from Source
+
+If you want to modify the code or build it yourself, you can build the image locally.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/brunobenchimol/netsim-in-a-box.git
+cd netsim-in-a-box
+
+# 2. Build the image
+docker build -t netsim-in-a-box .
+```
+
+## 2. Host Prerequisites (Important)
 
 This tool relies on Linux Kernel modules for traffic control (tc). Your host (the Linux VM, not the container) must have these modules loaded.  
 
@@ -43,11 +71,6 @@ sudo modprobe sch_htb
 
 # Required for 'delay' (latency) and 'loss'
 sudo modprobe sch_netem
-```
-
-## 2. Build the Image
-```bash
-docker build -t netsim-in-a-box .
 ```
 
 ## 3. Running the Container (Host Network Mode)
@@ -184,15 +207,7 @@ This mode is for users who want a simple "it just works" solution and agree to l
 2.  **What happens:**
 When `RECONFIGURE_FIREWALL=true` is set, the container will detect if `ufw` is installed on the host and attempt to run `ufw disable`. This is an invasive action taken for convenience. **Do not use this flag if you have a complex firewall setup.**
 
-## 6. Known Limitations
-
-* **Linux Only:** This tool is 100% dependent on Linux kernel modules (ifb, sch_htb, netem) and the iproute2 (tc) utility. It will not have full capabilities on macOS or native Windows in case you try to run without `docker`.
-
-* **WSL2 Not Supported:** This tool is not supported on WSL2. WSL2 uses kernel that does not have networking shaping modules (NETEM) installed that is directly needed by `tc`. Use a dedicated Linux VM (e.g., in VirtualBox, VMWare) or a bare-metal Linux host.
-
-* **Rootless Docker:** This will not work with rootless Docker, as it requires elevated NET_ADMIN capabilities on the host's network stack and **uid 0** for `tc` and `iptables`.
-
-## 7. Bonus Tool: iperf3 Server
+## 6. Bonus Tool: iperf3 Server
 
 This container also runs an `iperf3` server as a daemon, managed by `supervisord`. This helps you test bandwidth shaping without needing to run a separate server.
 
@@ -207,7 +222,7 @@ This container also runs an `iperf3` server as a daemon, managed by `supervisord
     ```
 3.  The client will report a throughput of ~10 Mbits/s.
 
-## 8. Advanced: Raw Command Execution
+## 7. Advanced: Raw Command Execution
 
 NetSim-in-a-Box v4 includes a "raw" API endpoint for advanced users who need to inspect or manually modify the `tc` or `ip` settings.
 
@@ -252,5 +267,17 @@ curl -G http://localhost:2023/tc/api/v2/config/raw --data-urlencode "cmd=ip addr
 # }
 ```
 
+## 8. Known Limitations
+
+* **Linux Only:** This tool is 100% dependent on Linux kernel modules (ifb, sch_htb, netem) and the iproute2 (tc) utility. It will not have full capabilities on macOS or native Windows in case you try to run without `docker`.
+
+* **WSL2 Not Supported:** This tool is not supported on WSL2. WSL2 uses kernel that does not have networking shaping modules (NETEM) installed that is directly needed by `tc`. Use a dedicated Linux VM (e.g., in VirtualBox, VMWare) or a bare-metal Linux host.
+
+* **Rootless Docker:** This will not work with rootless Docker, as it requires elevated NET_ADMIN capabilities on the host's network stack and **uid 0** for `tc` and `iptables`.
+
+* **Host-to-Guest Traffic:** Testing `INCOMING` rules by sending traffic from the host machine (e.g., Windows) to the guest VM (Linux) will likely fail. Hypervisors use an optimized "fast path" that bypasses the `ingress` qdisc. To test `INCOMING` rules, you must send traffic from a separate machine (another VM or a device on the network) or from the internet (e.g., `curl` an external site).
+
 ## 9. TODO
 
+* Implement simultaneous incoming and outgoing rules (v5).
+* Add gap parameter to reorder rules.
