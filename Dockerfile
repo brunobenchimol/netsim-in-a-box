@@ -1,6 +1,3 @@
-# Set a default architecture (can be overridden with --build-arg)
-ARG ARCH="amd64"
-
 # --- STAGE 1: Go Builder (builder-go) ---
 # Use a modern, secure Go version on Alpine for a small build stage
 FROM golang:1.24-alpine AS builder-go
@@ -31,7 +28,7 @@ RUN npm run build:css
 
 # --- STAGE 3: Final Runtime Image (final) ---
 # Use modern Ubuntu 24.04, supporting the build architecture
-FROM ${ARCH}/ubuntu:24.04
+FROM ubuntu:24.04
 
 # Set non-interactive for package installs
 ENV DEBIAN_FRONTEND=noninteractive
