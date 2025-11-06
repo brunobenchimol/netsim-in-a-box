@@ -8,7 +8,7 @@ To keep the tool lightweight, secure, and free from complex build dependencies i
 
 We do not use the Tailwind CDN in production. We check-in the generated production.css file directly into the repository.
 
-## Arquivos-Fonte
+## Source Files
 
 * `index.html`: The main UI structure.
 * `app.js`: The vanilla JavaScript that consumes the backend API.
