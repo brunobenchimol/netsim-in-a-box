@@ -31,6 +31,7 @@ type PreflightCheck struct {
 
 var isDarwin bool
 var hasIFB bool
+var hasIPv6 bool
 
 const version = "4.5.0" // V4: Pure Go TC
 const apiVersion = "v2" // The API path we are serving
@@ -368,6 +369,21 @@ func runPreflightChecks(ctx context.Context) (checks []*PreflightCheck, ok bool)
 		} else {
 			check.Status = true
 			check.Message = "OK (Module 'sch_netem' is loaded)"
+		}
+		checks = append(checks, check)
+	}
+	// === Check 7: IPv6 Stack Enabled ===
+	{
+		check := &PreflightCheck{Name: "IPv6 Stack", Required: false}
+		// /proc/net/if_inet6 lists the IPv6-enabled interfaces.
+		// If it exists, the stack is enabled.
+		if _, err := os.Stat("/proc/net/if_inet6"); err != nil {
+			check.Status = false
+			check.Message = "Host IPv6 stack not detected. IPv6 filter rules will be skipped."
+		} else {
+			check.Status = true
+			check.Message = "OK (IPv6 stack detected)"
+			hasIPv6 = true
 		}
 		checks = append(checks, check)
 	}

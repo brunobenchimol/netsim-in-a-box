@@ -400,7 +400,19 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 		return fmt.Errorf("V4: failed to add 'fast' API filter: %w", err)
 	}
 
-	// 5b. "All Else" Filter (Prio 2) -> "Slow" Class (1:11)
+	// 5b. (Conditional) API Filter (Prio 1) -> "Fast" Class (1:10) [IPv6]
+	if hasIPv6 {
+		log.Printf("[INFO] V4: Host has IPv6. Adding parallel 'fast' API filter for IPv6...")
+		if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "protocol", "ipv6", "parent", "1:", "prio", "1",
+			"u32", "match", "ip6", apiFilterPortCmd, v.ApiPort, "0xffff",
+			"flowid", "1:10"); err != nil {
+			return fmt.Errorf("V4: failed to add 'fast' API filter (IPv6): %w", err)
+		}
+	} else {
+		log.Printf("[INFO] V4: Host does not have IPv6. Skipping IPv6 filter rule.")
+	}
+
+	// 5c. "All Else" Filter (Prio 2) -> "Slow" Class (1:11)
 	if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "protocol", "all", "parent", "1:", "prio", "2",
 		"u32", "match", "u32", "0", "0",
 		"flowid", "1:11"); err != nil {
