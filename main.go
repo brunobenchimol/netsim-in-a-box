@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -143,15 +144,64 @@ func doMain(ctx context.Context) error {
 	// --- Static File Server ---
 	uiStaticDir := "./frontend"
 	log.Printf("[INFO] Serving V4 static UI from %s at /", uiStaticDir)
+
+	// --- FIX: Path Traversal Vulnerability ---
+
+	// 1. Get the absolute path to our static directory. This is our "jail".
+	absStaticDir, err := filepath.Abs(uiStaticDir)
+	if err != nil {
+		// This is a fatal startup error
+		return fmt.Errorf("failed to get absolute path for static dir: %w", err)
+	}
+	log.Printf("[INFO] Static file security jail set to: %s", absStaticDir)
+
+	// 2. Create the file server that will securely serve files *if* they exist.
+	// http.FileServer is already secure against path traversal on its own.
 	fsV3 := http.StripPrefix("/", http.FileServer(http.Dir(uiStaticDir)))
+
+	// 3. r.Get("/*", ...) handles all other routes
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		f, err := os.Stat(uiStaticDir + r.URL.Path)
-		if os.IsNotExist(err) || f.IsDir() {
-			// If file doesn't exist (or is a dir), serve index.html for SPA routing
-			http.ServeFile(w, r, uiStaticDir+"/index.html")
+		// 4. Get the raw requested path (e.g., "/app.js" or "/../../etc/passwd")
+		requestedPath := r.URL.Path
+
+		// 5. Join, clean, and get the absolute path of the user's request.
+		// filepath.Join cleans the path separators for the OS
+		// filepath.Clean resolves the ".." operators
+		cleanedPath := filepath.Clean(filepath.Join(uiStaticDir, requestedPath))
+
+		// 6. Get the absolute path of the final, cleaned path
+		absCleanedPath, err := filepath.Abs(cleanedPath)
+		if err != nil {
+			// This indicates a malformed path
+			http.Error(w, "Not Found", http.StatusNotFound)
 			return
 		}
-		// Otherwise, serve the static file
+
+		// 7. *** THE SECURITY CHECK ***
+		// Check if the final, absolute, cleaned path is *still* inside our jail.
+		if !strings.HasPrefix(absCleanedPath, absStaticDir) {
+			// If not, it's a path traversal attack. Deny it.
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+
+		// 8. *** END SECURITY CHECK ***
+		// The path is now safe. Proceed with your original SPA logic.
+		// 'cleanedPath' is now a safe path (e.g., "frontend/app.js")
+		f, err := os.Stat(absCleanedPath)
+		if os.IsNotExist(err) || f.IsDir() {
+			// File doesn't exist or is a dir, serve the SPA index.html
+			absIndexPath, err := filepath.Abs(filepath.Join(uiStaticDir, "index.html"))
+			if err != nil || !strings.HasPrefix(absIndexPath, absStaticDir) {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
+			}
+			http.ServeFile(w, r, absIndexPath)
+			return
+		}
+
+		// The file exists, is not a directory, and is safe.
+		// Let the secure http.FileServer handle serving it.
 		fsV3.ServeHTTP(w, r)
 	})
 	// --- End Static Server ---
