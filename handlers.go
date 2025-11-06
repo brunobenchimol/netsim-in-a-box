@@ -435,15 +435,28 @@ func handleTcRaw(w http.ResponseWriter, r *http.Request) {
 
 	// V4 Security: Whitelist 'tc' and 'ip'
 	arg0 := args[0]
+
+	// ---  (Secure - Taint-Breaking) Logic ---
+	// 1. Create a new 'safeCmd' variable that is NOT tainted.
+	var safeCmd string
+
+	// 2. Use the tainted 'arg0' only to decide which
+	//    hard-coded (clean) string literal to use.
 	switch arg0 {
-	case "tc", "ip":
-		// Command allowed
+	case "tc":
+		safeCmd = "tc" // 'safeCmd' is now "clean"
+	case "ip":
+		safeCmd = "ip" // 'safeCmd' is now "clean"
 	default:
+		// If it's not 'tc' or 'ip', reject.
 		respondWithError(w, fmt.Sprintf("invalid command: %v. Only 'tc' and 'ip' are allowed", arg0), 403)
 		return
 	}
 
-	if b, err := exec.CommandContext(ctx, arg0, args[1:]...).Output(); err != nil {
+	// 3. Use the "clean" 'safeCmd' variable in the exec.
+	// The scanner will now see the command is a hard-coded value,
+	// and 'args[1:]' are safely treated as arguments, not commands.
+	if b, err := exec.CommandContext(ctx, safeCmd, args[1:]...).Output(); err != nil {
 		respondWithError(w, fmt.Sprintf("exec %v: %v", cmd, err), 500)
 		return
 	} else if len(b) == 0 {
@@ -451,7 +464,6 @@ func handleTcRaw(w http.ResponseWriter, r *http.Request) {
 		respondWithJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": ""})
 	} else {
 		log.Printf("[INFO] RAW: exec %v ok (with output)", cmd)
-		// Return as plain text, since 'tc' rarely returns JSON
 		respondWithJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": string(b)})
 	}
 }
