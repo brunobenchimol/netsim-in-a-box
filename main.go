@@ -188,11 +188,15 @@ func doMain(ctx context.Context) error {
 		// 8. *** END SECURITY CHECK ***
 		// The path is now safe. Proceed with your original SPA logic.
 		// 'cleanedPath' is now a safe path (e.g., "frontend/app.js")
-		f, err := os.Stat(cleanedPath)
+		f, err := os.Stat(absCleanedPath)
 		if os.IsNotExist(err) || f.IsDir() {
 			// File doesn't exist or is a dir, serve the SPA index.html
-			// Use the safe, cleaned path for index.html as well
-			http.ServeFile(w, r, filepath.Join(uiStaticDir, "index.html"))
+			absIndexPath, err := filepath.Abs(filepath.Join(uiStaticDir, "index.html"))
+			if err != nil || !strings.HasPrefix(absIndexPath, absStaticDir) {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
+			}
+			http.ServeFile(w, r, absIndexPath)
 			return
 		}
 
