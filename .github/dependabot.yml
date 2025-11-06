@@ -5,8 +5,17 @@
 
 version: 2
 updates:
-  - package-ecosystem: "gomod" 
+  # 1. Go backend dependencies (go.mod)
+  - package-ecosystem: "gomod"
     directory: "/" # Location of package manifests (go.mod)
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+
+  # 2. Frontend npm dependencies (package.json)
+  - package-ecosystem: "npm"
+    directory: "/frontend" # Location of package.json
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    
