@@ -27,8 +27,9 @@ COPY frontend/tailwind.config.js frontend/input.css frontend/index.html frontend
 RUN npm run build:css
 
 # --- STAGE 3: Final Runtime Image (final) ---
-# Use modern Ubuntu 24.04, supporting the build architecture
-FROM ubuntu:24.04
+# Use modern Ubuntu 24.04 (noble), pinned to a specific digest for security and reproducible builds
+# Improves SLSA (Supply-chain Levels for Software Artifacts)
+FROM ubuntu@sha256:b84e54f0495ad6c9ca92099871fabc570fbe084dda191bcb08ac2ccaa8cd9b28
 
 # Set non-interactive for package installs
 ENV DEBIAN_FRONTEND=noninteractive

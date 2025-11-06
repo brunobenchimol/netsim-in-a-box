@@ -244,7 +244,7 @@ You can send the command as plain text in the request body.
 **Example: Get `tc` qdisc status for `ens33`**
 ```bash
 # Note: The command is in the request body
-curl -X POST --data "qdisc show dev ens33" http://localhost:2023/tc/api/v2/config/raw
+curl -X POST --data "tc qdisc show dev ens33" http://localhost:2023/tc/api/v2/config/raw
 
 # Example Success Output:
 # {

@@ -32,7 +32,7 @@ type PreflightCheck struct {
 var isDarwin bool
 var hasIFB bool
 
-const version = "4.3.0" // V4: Pure Go TC
+const version = "4.3.1" // V4: Pure Go TC
 const apiVersion = "v2" // The API path we are serving
 
 func init() {

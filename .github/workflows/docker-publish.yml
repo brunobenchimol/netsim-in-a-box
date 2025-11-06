@@ -75,4 +75,6 @@ jobs:
           # Adds caching for faster future builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Adds an attestation (cryptographically signed metadata)
+          provenance: true
           
