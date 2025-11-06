@@ -39,6 +39,40 @@
                     2. Configure Rules for <span id="selected-iface-name" class="text-blue-400"></span>
                 </h2>
                 
+                <fieldset class="border border-gray-700 p-4 rounded-md mb-6">
+                    <legend class="text-lg font-medium text-white px-2">Simulation Presets</legend>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                        <div>
+                            <label for="simulation-presets" class="block text-sm font-medium text-gray-300 mb-2">Apply a common scenario</label>
+                            <select id="simulation-presets" class="form-select block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                <option value="">(Select a preset...)</option>
+
+                                <optgroup label="Mobile Networks">
+                                    <option value="5g-ideal">5G (Ideal)</option>
+                                    <option value="4g-good">4G (Good)</option>
+                                    <option value="4g-poor">4G (Poor/Congested)</option>
+                                    <option value="3g-legacy">Legacy (3G/Edge)</option>
+                                </optgroup>
+                                
+                                <optgroup label="Wi-Fi & WAN (Fixed/Global)">
+                                    <option value="nationwide-network">Nationwide (Fiber)</option>
+                                    <option value="oversea-network">Oversea (Intercontinental)</option>
+                                    <option value="leo-satellite">Satellite (LEO - Fast)</option>
+                                    <option value="geo-satellite">Satellite (GEO - Slow)</option>
+                                    <option value="slow-stable-adsl">Slow ADSL (Throttled)</option>
+                                </optgroup>
+                                
+                                <optgroup label="Problematic Networks">
+                                    <option value="unstable-wifi">Unstable Wi-Fi (Congested)</option>
+                                    <option value="unstable-voip">Unstable Call (High Jitter)</option>
+                                    <option value="bad-network">Bad Network (High Loss)</option>
+                                </optgroup>
+
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
+
                 <form id="config-form" class="space-y-6">
                     
                     <fieldset class="border border-gray-700 p-4 rounded-md">
@@ -209,6 +243,7 @@
                                 <div class="flex space-x-2 mt-1">
                                     <input type="number" name="reorder" id="reorder" min="0" max="100" step="0.01" placeholder="Reorder (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                                     <input type="number" name="reorderCorrelation" id="reorderCorrelation" min="0" max="100" placeholder="Corr. (%)" class="form-input block w-1/2 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
+                                    <input type="number" name="reorderGap" id="reorderGap" min="0" placeholder="Gap" class="form-input block w-1/3 bg-gray-700 border-gray-600 rounded-md p-2 text-white">
                                 </div>
                             </div>
                         </div>

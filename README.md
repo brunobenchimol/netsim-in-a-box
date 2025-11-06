@@ -153,6 +153,50 @@ curl [https://google.com](https://google.com)
  
 7. **Reset:** When finished, click the "Reset All Rules" button in the UI.
 
+## Simulation Presets
+
+To make testing easier, `netsim-in-a-box` v4.5+ includes 12 built-in presets that cover common real-world network scenarios.
+
+Just select a preset from the "Simulation Presets" dropdown. The form will auto-fill with the correct values, and you can apply the rules immediately.
+
+---
+
+### 📱 Mobile Networks
+
+These presets simulate common mobile network experiences, from ideal 5G to legacy 3G.
+
+| Preset Name | Rate (Bandwidth) | Delay (Latency) | Jitter | Loss (%) | Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **5G (Ideal)** | 100 mbit | 20 ms | 5 ms | 0% | Tests the ideal, low-latency performance of a 5G network. |
+| **4G (Good)** | 25 mbit | 80 ms | 15 ms | 0.1% | Simulates a stable 4G/LTE connection in a good signal area. |
+| **4G (Poor/Congested)** | 5 mbit | 150 ms | 50 ms | 1% | Simulates a 4G connection with a weak signal or high congestion (e.g., at a crowded event). |
+| **Legacy (3G/Edge)** | 1 mbit | 400 ms | 100 ms | 3% | Simulates a very poor 3G or Edge connection. Excellent for testing timeouts and app resilience. |
+
+---
+
+### 🌍 Wi-Fi & WAN (Fixed/Global)
+
+These presets simulate fixed-line broadband, satellite connections, and other global network conditions.
+
+| Preset Name | Rate (Bandwidth) | Delay (Latency) | Jitter | Loss (%) | Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Nationwide (Fiber)** | 50 mbit | 40 ms | 10 ms | 0% | A standard, reliable broadband/fiber connection within the same country. |
+| **Oversea (Intercontinental)** | Unlimited | 120 ms | 10 ms | 0% | Simulates the base latency of a fast fiber connection between continents (e.g., Brazil to Europe). |
+| **Satellite (LEO - Fast)** | 15 mbit | 80 ms | 30 ms | 0.5% | Simulates a good Low Earth Orbit (LEO) satellite connection, like Starlink. |
+| **Satellite (GEO - Slow)** | 3 mbit | 600 ms | 200 ms | 1% | Simulates a traditional geostationary satellite. The extreme latency is the main test. |
+| **Slow ADSL (Throttled)** | 512 kbit | 100 ms | 20 ms | 0.1% | Simulates a legacy ADSL line or a modern connection being throttled. Tests slow uploads/downloads. |
+
+---
+
+### 📉 Problematic Networks
+
+These presets are designed to simulate specific *failure scenarios* to test your application's error handling.
+
+| Preset Name | Rate (Bandwidth) | Delay (Latency) | Jitter | Loss (%) | Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Unstable Wi-Fi (Congested)** | Unlimited | 40 ms | 20 ms | **2%** | Simulates a public Wi-Fi (e.g., airport, cafe). Bandwidth is high, but intermittent packet loss is the problem. |
+| **Unstable Call (High Jitter)** | 10 mbit | 50 ms | **150 ms** | 1% | The focus is on extreme **Jitter**. Simulates a VoIP/Zoom call that "cuts out," "freezes," or has robotic audio. |
+| **Bad Network (High Loss)** | 5 mbit | 100 ms | 50 ms | **8%** | A general stress test. Can your application survive, handle retries, and recover from a very unreliable network? |
 
 ## 5. Optional: Default Gateway Mode
 

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  netsim:
+    # Use the pre-built image from Docker Hub
+    image: brunobenchimol/netsim-in-a-box:latest
+
+    container_name: netsim-in-a-box
+    
+    # Required for --net=host and kernel capabilities
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      
+    restart: unless-stopped

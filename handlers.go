@@ -163,6 +163,7 @@ type V4NetworkOptions struct {
 	DuplicateCorrelation string // %
 	Reorder              string // %
 	ReorderCorrelation   string // %
+	ReorderGap           string
 }
 
 func handleTcSetupV4(w http.ResponseWriter, r *http.Request) {
@@ -195,6 +196,7 @@ func handleTcSetupV4(w http.ResponseWriter, r *http.Request) {
 		DuplicateCorrelation: q.Get("duplicateCorrelation"),
 		Reorder:              q.Get("reorder"),
 		ReorderCorrelation:   q.Get("reorderCorrelation"),
+		ReorderGap:           q.Get("reorderGap"),
 	}
 
 	if err := opts.Execute(ctx); err != nil {
@@ -309,8 +311,13 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 			netemArgs = append(netemArgs, "reorder", fmt.Sprintf("%v%%", v.Reorder))
 			if v.ReorderCorrelation != "" {
 				netemArgs = append(netemArgs, fmt.Sprintf("%v%%", v.ReorderCorrelation))
+				// Gap is positional and must come AFTER correlation
+				if v.ReorderGap != "" {
+					netemArgs = append(netemArgs, "gap", v.ReorderGap)
+				}
 			}
 		}
+
 	}
 
 	// Loss, Loss Correlation

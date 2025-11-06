@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const logOutputEl = document.getElementById('log-output');
 
     const configForm = document.getElementById('config-form');
+    const presetSelect = document.getElementById('simulation-presets');
     const resetButton = document.getElementById('reset-button');
     const directionSelect = document.getElementById('direction');
     const ifbWarning = document.getElementById('ifb-warning');
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const corruptCorrelationInput = document.getElementById('corruptCorrelation');
     const duplicateCorrelationInput = document.getElementById('duplicateCorrelation');
     const reorderCorrelationInput = document.getElementById('reorderCorrelation');
+    const reorderGapInput = document.getElementById('reorderGap'); 
 
     const lossModelSelect = document.getElementById('lossModel');
     const lossModelForms = {
@@ -52,9 +54,52 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('corrupt'),
         document.getElementById('duplicate'),
         document.getElementById('reorder'),
+        document.getElementById('reorderGap'),
     ];
 
     let selectedInterface = null; // Stores the selected interface
+
+    const presets = {
+        // --- 1. Mobile Networks ---
+        '5g-ideal': {
+            'rate-value': '100', 'rate-unit': 'mbit', 'delay': '20', 'jitter': '5', 'loss': ''
+        },
+        '4g-good': {
+            'rate-value': '25', 'rate-unit': 'mbit', 'delay': '80', 'jitter': '15', 'loss': '0.1'
+        },
+        '4g-poor': {
+            'rate-value': '5', 'rate-unit': 'mbit', 'delay': '150', 'jitter': '50', 'loss': '1'
+        },
+        '3g-legacy': {
+            'rate-value': '1', 'rate-unit': 'mbit', 'delay': '400', 'jitter': '100', 'loss': '3'
+        },
+        // --- 2. Wi-Fi & WAN ---
+        'nationwide-network': {
+            'rate-value': '50', 'rate-unit': 'mbit', 'delay': '40', 'jitter': '10', 'loss': ''
+        },
+        'oversea-network': { // unlimited rate (no 'rate-value')
+            'delay': '120', 'jitter': '10', 'loss': ''
+        },
+        'leo-satellite': {
+            'rate-value': '15', 'rate-unit': 'mbit', 'delay': '80', 'jitter': '30', 'loss': '0.5'
+        },
+        'geo-satellite': {
+            'rate-value': '3', 'rate-unit': 'mbit', 'delay': '600', 'jitter': '200', 'loss': '1'
+        },
+        'slow-stable-adsl': {
+            'rate-value': '512', 'rate-unit': 'kbit', 'delay': '100', 'jitter': '20', 'loss': '0.1'
+        },
+        // --- 3. Problematic Networks ---
+        'unstable-wifi': { // unlimited rate (no 'rate-value')
+            'delay': '40', 'jitter': '20', 'loss': '2'
+        },
+        'unstable-voip': {
+            'rate-value': '10', 'rate-unit': 'mbit', 'delay': '50', 'jitter': '150', 'loss': '1'
+        },
+        'bad-network': {
+            'rate-value': '5', 'rate-unit': 'mbit', 'delay': '100', 'jitter': '50', 'loss': '8'
+        }
+    };
 
     /**
      * Writes a message to the UI log
@@ -130,6 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDependency(corruptInput, corruptCorrelationInput);
         updateDependency(duplicateInput, duplicateCorrelationInput);
         updateDependency(reorderInput, reorderCorrelationInput); // Reorder child
+        updateDependency(reorderCorrelationInput, reorderGapInput);
+
         updateApplyButtonState();
     }
 
@@ -162,6 +209,49 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         applyButton.disabled = !hasValue;
+    }
+
+    /**
+     * Resets the form and applies a selected preset
+     * @param {string} presetName - The key from the presets object
+     */
+    function applyPreset(presetName) {
+        if (!presetName) {
+            return; // User selected "(Select a preset...)"
+        }
+
+        const preset = presets[presetName];
+        if (!preset) {
+            logMessage(`Error: Preset "${presetName}" not found.`, 'error');
+            return;
+        }
+
+        // 1. Reset the form to clear all fields
+        configForm.reset();
+
+        // 2. Apply all values from the preset object
+        for (const [key, value] of Object.entries(preset)) {
+            const el = document.getElementById(key); // Assumes ID matches key
+            if (el) {
+                el.value = value;
+            }
+        }
+
+        // 3. Ensure "random" model is selected if a loss preset was applied
+        let model = 'random'; // default
+        if (preset.lossStateP13) {
+            model = 'state';
+        } else if (preset.lossGemodelP) {
+            model = 'gemodel';
+        }
+        lossModelSelect.value = model;
+
+        // 4. Update all UI dependencies
+        updateInputDependencies();
+        updateLossModelUI();
+        updateApplyButtonState(); // This will enable the apply button
+        
+        logMessage(`Applied preset: ${presetName}`, 'success');
     }
 
     /**
@@ -310,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Other Manipulations
             'corrupt', 'corruptCorrelation',
             'duplicate', 'duplicateCorrelation',
-            'reorder', 'reorderCorrelation'
+            'reorder', 'reorderCorrelation', 'reorderGap',
         ];
         
         const rateVal = formData.get('rate-value');
@@ -374,6 +464,8 @@ document.addEventListener('DOMContentLoaded', () => {
     duplicateInput.addEventListener('input', updateInputDependencies);
     reorderInput.addEventListener('input', updateInputDependencies);
     lossModelSelect.addEventListener('input', updateLossModelUI);
+
+    presetSelect.addEventListener('input', (e) => applyPreset(e.target.value));
 
     valueInputs.forEach(input => {
         input.addEventListener('input', updateApplyButtonState);
