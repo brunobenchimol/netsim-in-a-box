@@ -321,7 +321,20 @@ curl -G http://localhost:2023/tc/api/v2/config/raw --data-urlencode "cmd=ip addr
 
 * **Host-to-Guest Traffic:** Testing `INCOMING` rules by sending traffic from the host machine (e.g., Windows) to the guest VM (Linux) will likely fail. Hypervisors use an optimized "fast path" that bypasses the `ingress` qdisc. To test `INCOMING` rules, you must send traffic from a separate machine (another VM or a device on the network) or from the internet (e.g., `curl` an external site).
 
-## 9. TODO
+## 9. 🗺️ Roadmap: v5.0 (Major Re-architecture) 
 
-* Implement simultaneous incoming and outgoing rules (v5).
-* Add gap parameter to reorder rules.
+This release focuses on re-architecting the core logic to support advanced, simultaneous simulation scenarios.
+
+* **1. Enable Simultaneous INCOMING and OUTGOING Rules**
+    * **What:** Refactor the core logic to allow applying *both* an incoming rule (on `ifb0`) and an outgoing rule (on the `root` of the main interface) at the same time.
+    * **Why:** This is the single biggest limitation of our current tool. Right now, applying one rule type (e.g., incoming) automatically deletes the other.
+
+* **2. Add Advanced Filtering (Per-IP/Port Rules)**
+    * **What:** Move beyond our simple "API vs. Everything Else" filter. Allow users to create a dynamic list of rules (e.g., "traffic to this IP gets 10% loss," "traffic to port 5432 gets 200ms delay").
+    * 
+    * **Why:** This elevates the tool from a "general" simulator to a "surgical" one for power users.    
+  
+**💡 These are potential nice features to be worked on if needed:**
+
+* * **Save/Load Profiles:** Let users save their custom simulation settings to a shareable link or file.
+* * **Live Stats Dashboard:** Create a new API endpoint that polls `tc -s qdisc show ...` to display real-time dropped/delayed packet counts in the UI.
