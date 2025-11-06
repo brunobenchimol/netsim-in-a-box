@@ -12,6 +12,12 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# Fix: GitHub Actions job or workflow has no explicit permissions set.  
+# This sets the minimum permissions required for the GITHUB_TOKEN
+permissions:
+  contents: read     # Required for actions/checkout to read the repo
+  actions: write     # Required for cache-to: type=gha (writing to the GHA cache)
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
