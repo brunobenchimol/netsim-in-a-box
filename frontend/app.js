@@ -116,7 +116,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         const logLine = document.createElement('div');
-        logLine.innerHTML = `<span class="text-gray-500">${timestamp}:</span> <span class="${colorClass}">${message}</span>`;
+        const timestampSpan = document.createElement('span');
+        timestampSpan.className = 'text-gray-500';
+        timestampSpan.textContent = `${timestamp}:`;
+        const messageSpan = document.createElement('span');
+        messageSpan.className = colorClass;
+        messageSpan.textContent = message;
+        logLine.appendChild(timestampSpan);
+        logLine.appendChild(document.createTextNode(' '));
+        logLine.appendChild(messageSpan);
         logOutputEl.appendChild(logLine);
         
         // Auto-scroll to the bottom
