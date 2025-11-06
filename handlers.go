@@ -406,7 +406,7 @@ func (v *V4NetworkOptions) Execute(ctx context.Context) error {
 		if err := runTC(ctx, "filter", "add", "dev", effectiveIface, "protocol", "ipv6", "parent", "1:", "prio", "1",
 			"u32", "match", "ip6", apiFilterPortCmd, v.ApiPort, "0xffff",
 			"flowid", "1:10"); err != nil {
-			return fmt.Errorf("V4: failed to add 'fast' API filter (IPv6): %w", err)
+			log.Printf("[WARN] V4: Failed to add 'fast' API filter (IPv6). Host kernel may lack 'u32' IPv6 support. This is non-fatal. Error: %v", err)
 		}
 	} else {
 		log.Printf("[INFO] V4: Host does not have IPv6. Skipping IPv6 filter rule.")
